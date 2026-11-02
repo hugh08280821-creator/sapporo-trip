@@ -4,6 +4,8 @@
 
   const $ = (s, el = document) => el.querySelector(s);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // 카페·디저트는 맛집과 따로 「카페」 탭에서 보여주기
+  PLACES.forEach((p) => { if (CATS[p.cat] && CATS[p.cat].type === 'cafe') p.type = 'cafe'; });
   const byId = Object.fromEntries([HOTEL, ...PLACES].map((p) => [p.id, p]));
 
   const store = {
@@ -16,6 +18,7 @@
     watchId: null,
     geoError: null,
     foodCat: 'all',
+    cafeCat: 'all',
     sightCat: 'all',
     sortNear: false,
     mapFilter: 'all',
@@ -361,8 +364,8 @@
     const q = (state.pickQ || '').trim().toLowerCase();
     const f = state.pickF || 'all';
     let list = PLACES.filter((p) => p.cat !== 'transport');
-    if (f === 'food') list = list.filter((p) => p.type === 'food' && p.cat !== 'cafe');
-    else if (f === 'cafe') list = list.filter((p) => p.cat === 'cafe');
+    if (f === 'food') list = list.filter((p) => p.type === 'food');
+    else if (f === 'cafe') list = list.filter((p) => p.type === 'cafe');
     else if (f === 'sight') list = list.filter((p) => p.type === 'sight');
     else if (f === 'otaru') list = list.filter((p) => p.area === '오타루');
     if (q) list = list.filter((p) => `${p.name_ko} ${p.name_ja} ${p.area} ${catOf(p).label} ${p.menu || ''}`.toLowerCase().includes(q));
@@ -402,8 +405,7 @@
 
   /* ---------------- 목록 ---------------- */
   function renderList(type) {
-    const isFood = type === 'food';
-    const key = isFood ? 'foodCat' : 'sightCat';
+    const key = `${type}Cat`;
     const cats = Object.entries(CATS).filter(([, c]) => c.type === type);
     let list = PLACES.filter((p) => p.type === type);
     const sel = state[key];
@@ -625,7 +627,7 @@
         <a class="btn small" href="${gmapsDir(p, 'transit')}" target="_blank" rel="noopener">길찾기</a></div>`);
       markers[p.id] = { m, p };
     }
-    $('#map-chips').innerHTML = [['all', '전체'], ['plan', '📅 내 일정'], ['food', '🍣 맛집'], ['sight', '⛩ 명소'], ['otaru', '🚃 오타루']]
+    $('#map-chips').innerHTML = [['all', '전체'], ['plan', '📅 내 일정'], ['food', '🍣 맛집'], ['cafe', '☕ 카페'], ['sight', '⛩ 명소'], ['otaru', '🚃 오타루']]
       .map(([k, l]) => `<button class="chip" data-mapf="${k}" aria-pressed="${state.mapFilter === k}">${l}</button>`).join('');
     applyMapFilter();
     updateMeMarker();
@@ -672,7 +674,7 @@
 
   /* ---------------- 라우팅 ---------------- */
   const view = $('#view');
-  const titles = { plan: '삿포로 2박 3일', map: '지도', food: '맛집', sights: '가볼 만한 곳', info: '여행 정보' };
+  const titles = { plan: '삿포로 2박 3일', map: '지도', food: '맛집', cafe: '카페', sights: '가볼 만한 곳', diary: '여행기', info: '여행 정보' };
   function route() {
     const raw = location.hash.replace(/^#\/?/, '') || 'plan';
     const [path, query] = raw.split('?');
@@ -684,7 +686,9 @@
     if (tab === 'map') { showMap(params.get('focus')); refreshLive(); return; }
     $('#map-wrap').hidden = true;
     view.hidden = false;
+    if (tab === 'diary') { view.innerHTML = ''; if (window.DIARY) window.DIARY.show(); window.scrollTo(0, 0); return; }
     if (tab === 'food') renderList('food');
+    else if (tab === 'cafe') renderList('cafe');
     else if (tab === 'sights') renderList('sight');
     else if (tab === 'info') renderInfo();
     else renderPlan(arg != null ? Number(arg) : null);
@@ -769,7 +773,7 @@
     }
     if (t.hasAttribute('data-close-sheet')) { closeSheet(); return; }
     if (t.dataset.day != null) { state.day = Number(t.dataset.day); renderPlan(state.day); refreshLive(); return; }
-    if (t.dataset.cat) { state[t.dataset.key] = t.dataset.cat; renderList(t.dataset.key === 'foodCat' ? 'food' : 'sight'); refreshLive(); return; }
+    if (t.dataset.cat) { state[t.dataset.key] = t.dataset.cat; renderList(t.dataset.key.replace(/Cat$/, '')); refreshLive(); return; }
     if (t.hasAttribute('data-sort')) {
       if (!state.pos) { startWatch(); alert('내 위치를 켜는 중이에요. 위치가 잡히면 다시 눌러 주세요.'); return; }
       if (!inHokkaido(state.pos)) { alert('삿포로에 도착하면 가까운 순으로 볼 수 있어요.'); return; }
@@ -807,6 +811,9 @@
   });
   $('#sheet-close').addEventListener('click', closeSheet);
   $('#sheet-backdrop').addEventListener('click', closeSheet);
+
+  // 여행기(diary.js)에서 쓰는 공용 도구
+  window.APP = { esc, toast, openSheet, closeSheet, byId, haversine, planDay: (i) => plan.days[i] || [] };
 
   /* ---------------- 시작 ---------------- */
   const dd = dday();

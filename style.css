@@ -16,6 +16,7 @@
   --cat-food: #d4673a;
   --cat-sight: #2f6fb3;
   --cat-otaru: #2f8a7a;
+  --cat-cafe: #8a5a3c;
   --cat-hotel: #c8963e;
   --radius: 16px;
   --shadow: 0 1px 2px rgba(20, 33, 58, .06), 0 4px 16px rgba(20, 33, 58, .06);
@@ -224,6 +225,7 @@ main { max-width: 720px; margin: 0 auto; padding: 16px 16px 24px; outline: none;
 .d-head { padding-right: 48px; }
 .d-head .cat { font-size: 13px; font-weight: 700; color: var(--cat-sight); }
 .d-head.food .cat { color: var(--cat-food); }
+.d-head.cafe .cat { color: var(--cat-cafe); }
 .d-head h2 { font-size: 23px; margin-top: 2px; }
 .d-head .ja { color: var(--ink-3); margin-top: 2px; }
 .d-desc { margin: 12px 0 0; color: var(--ink-2); }
@@ -271,6 +273,7 @@ main { max-width: 720px; margin: 0 auto; padding: 16px 16px 24px; outline: none;
 .pin span { transform: rotate(45deg); font-size: 16px; line-height: 1; }
 .pin.food { background: var(--cat-food); }
 .pin.sight { background: var(--cat-sight); }
+.pin.cafe { background: var(--cat-cafe); }
 .pin.hotel { background: var(--cat-hotel); width: 40px; height: 40px; }
 .me-dot { width: 20px; height: 20px; border-radius: 50%; background: #2c64c7; border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(44,100,199,.25), 0 2px 6px rgba(0,0,0,.3); }
 .leaflet-popup-content { font-family: inherit; font-size: 15px; margin: 12px 14px; }
@@ -281,13 +284,13 @@ main { max-width: 720px; margin: 0 auto; padding: 16px 16px 24px; outline: none;
 /* ---------- tabbar ---------- */
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 800;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(7, 1fr);
   height: calc(var(--tabbar-h) + var(--safe-b)); padding-bottom: var(--safe-b);
   background: var(--surface); border-top: 1px solid var(--line);
 }
 .tabbar a {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
-  color: var(--ink-3); text-decoration: none; font-size: 13px; font-weight: 600;
+  color: var(--ink-3); text-decoration: none; font-size: 11.5px; font-weight: 600; white-space: nowrap; letter-spacing: -.02em;
 }
 .tabbar .ti { font-size: 22px; line-height: 1; filter: grayscale(1); opacity: .7; }
 .tabbar a.active { color: var(--navy); }
@@ -382,3 +385,30 @@ div.pi-row { cursor: default; }
 @media (min-width: 560px) {
   .plist { grid-template-columns: 1fr 1fr; }
 }
+
+/* ---------- 여행기 ---------- */
+.photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.ph { position: relative; aspect-ratio: 1; padding: 0; border: 0; border-radius: 10px; overflow: hidden; background: var(--surface-2); cursor: pointer; }
+.ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ph-time { position: absolute; left: 6px; bottom: 6px; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; padding: 1px 6px; border-radius: 6px; }
+.ph-memo { position: absolute; right: 6px; top: 6px; background: var(--gold); color: #1b1408; font-size: 12px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; }
+.ph-big { width: 100%; border-radius: 14px; margin-top: 14px; display: block; }
+.memo-label { display: grid; gap: 6px; margin-top: 14px; font-weight: 600; }
+.memo-label textarea { font: inherit; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); resize: vertical; }
+.btn.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+.btn.danger-text { color: var(--red); }
+label.btn input[hidden] { display: none; }
+.btn.is-disabled { opacity: .5; pointer-events: none; }
+.busy { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: var(--gold-soft); font-weight: 600; font-size: 15px; }
+.spin { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--gold); border-top-color: transparent; animation: spin .9s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.diary .cat { font-size: 13px; font-weight: 700; color: var(--gold); }
+.diary h3 { font-size: 21px; margin: 4px 0 10px; }
+.diary-body p { margin: 0 0 12px; line-height: 1.8; font-size: 16.5px; }
+.diary-photos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 14px; }
+.diary-photos figure { margin: 0; }
+.diary-photos img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; display: block; }
+.diary-photos figcaption { font-size: 13px; color: var(--ink-2); margin-top: 4px; line-height: 1.4; }
+.code-form { display: flex; gap: 8px; }
+.code-form input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); }
+.linkish { border: 0; background: none; color: var(--blue); padding: 0; font-size: inherit; cursor: pointer; text-decoration: underline; }

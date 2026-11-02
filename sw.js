@@ -1,7 +1,7 @@
 // 오프라인에서도 일정·맛집 정보를 볼 수 있도록 캐시
-const VERSION = 'sapporo-v2';
+const VERSION = 'sapporo-v4';
 const SHELL = [
-  './', 'index.html', 'style.css', 'app.js', 'data.js', 'extra.js', 'manifest.webmanifest', 'icon.svg',
+  './', 'index.html', 'style.css', 'app.js', 'diary.js', 'data.js', 'extra.js', 'manifest.webmanifest', 'icon.svg',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
 ];

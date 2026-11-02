@@ -4,6 +4,7 @@ const TRIP = {
   subtitle: '2026년 11월 22일(일) ~ 24일(화) · 2박 3일',
   start: '2026-11-22',
   checked: '2026년 11월 2일',
+  diaryApi: '', // 여행기 서버(Cloudflare Worker) 주소
 };
 
 const HOTEL = {
@@ -38,7 +39,8 @@ const CATS = {
   soupcurry: { label: '수프카레', emoji: '🍛', type: 'food' },
   izakaya: { label: '이자카야·향토요리', emoji: '🍶', type: 'food' },
   dinner: { label: '기념일 디너', emoji: '🥂', type: 'food' },
-  cafe: { label: '디저트·카페', emoji: '🍰', type: 'food' },
+  cafe: { label: '카페·커피', emoji: '☕', type: 'cafe' },
+  sweets: { label: '디저트·파르페', emoji: '🍰', type: 'cafe' },
   view: { label: '야경·전망', emoji: '🌃', type: 'sight' },
   history: { label: '역사·건축', emoji: '🏛', type: 'sight' },
   walk: { label: '산책·거리', emoji: '🚶', type: 'sight' },
@@ -248,7 +250,7 @@ const PLACES = [
     tip: '예약 메모에 「결혼기념일·창가석 희망」이라고 적으세요.',
   },
   {
-    id: 'sato', type: 'food', cat: 'cafe', area: '오도리',
+    id: 'sato', type: 'food', cat: 'sweets', area: '오도리',
     name_ko: '파르페·커피·술·사토 (시메 파르페)', name_ja: 'パフェ、珈琲、酒、佐藤',
     desc: '저녁 식사 뒤 파르페로 마무리하는 삿포로 「시메 파르페」 문화를 대표하는 가게예요. 영어 메뉴가 있어요.',
     menu: '솔티드 캐러멜과 피스타치오 1,994엔, 계절 파르페',
@@ -261,7 +263,7 @@ const PLACES = [
     tip: '21~23시는 대기가 길어요. 스스키노에서 저녁을 먹었다면 걸어서 7~8분이에요.',
   },
   {
-    id: 'rokkatei', type: 'food', cat: 'cafe', area: '호텔 옆',
+    id: 'rokkatei', type: 'food', cat: 'sweets', area: '호텔 옆',
     name_ko: '롯카테이 삿포로 본점', name_ja: '六花亭 札幌本店',
     desc: '마루세이 버터샌드로 유명한 홋카이도 대표 과자점의 본점이에요. 호텔에서 2분 거리라 기념품 사기 좋고, 2층 카페에서 본점 한정 디저트를 맛볼 수 있어요.',
     menu: '마루세이 버터샌드, 마루세이 아이스샌드, 핫케이크',
@@ -274,7 +276,7 @@ const PLACES = [
     tip: '귀국일에 기념품을 사기 딱 좋아요. 마루세이 아이스샌드는 카페에서만 먹을 수 있어요.',
   },
   {
-    id: 'kinotoya', type: 'food', cat: 'cafe', area: '오도리',
+    id: 'kinotoya', type: 'food', cat: 'sweets', area: '오도리',
     name_ko: '기노토야 오도리공원점', name_ja: 'きのとや 大通公園店・KINOTOYA cafe',
     desc: '삿포로 대표 양과자점의 카페로, 이 매장 한정 「오무 파르페」와 소프트아이스크림이 인기예요. 지하보도와 바로 이어져 날씨가 궂어도 편해요.',
     menu: '오무 파르페, 딸기 푸딩 소프트, 조각 케이크',
@@ -314,7 +316,7 @@ const PLACES = [
     tip: '현금만 받아요. 붐비는 날은 오후에 접수가 일찍 끝날 수 있어요.',
   },
   {
-    id: 'letao', type: 'food', cat: 'cafe', area: '오타루', from: 'otaru',
+    id: 'letao', type: 'food', cat: 'sweets', area: '오타루', from: 'otaru',
     name_ko: '르타오 본점', name_ja: '小樽洋菓子舗ルタオ 本店',
     desc: '도블 프로마주 치즈케이크로 유명한 르타오의 본점이에요. 본점 카페에서만 먹을 수 있는 냉동하지 않은 치즈케이크가 있어요.',
     menu: '도블 프로마주, 케이크 세트(음료 포함 약 1,200~1,400엔)',
@@ -326,7 +328,7 @@ const PLACES = [
     tip: '9시 오픈 직후가 가장 여유로워요. 1인 1주문이 필수예요.',
   },
   {
-    id: 'kitakaro', type: 'food', cat: 'cafe', area: '오타루', from: 'otaru',
+    id: 'kitakaro', type: 'food', cat: 'sweets', area: '오타루', from: 'otaru',
     name_ko: '기타카로 오타루 본관', name_ja: '北菓楼 小樽本館',
     desc: '바움쿠헨 「요세이노모리」와 슈크림 「유메후센」으로 유명한 과자점이에요. 르타오 본점 바로 근처라 함께 들르기 좋아요.',
     menu: '유메후센 슈크림, 요세이노모리 바움쿠헨',
