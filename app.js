@@ -215,10 +215,11 @@
       : { uid: newUid(), title: it.kind === 'move' ? stripTags(it.text).replace(/^[^\p{L}\p{N}]+/u, '') : it.title, time: it.time, memo: it.kind === 'move' ? '' : (it.text || ''), move: it.kind === 'move' })));
   }
 
-  // 공유 링크: 일정을 짧게 줄여서 주소 뒤에 붙임 (서버 없이 카톡으로 전달)
+  // 공유 링크: 일정과 쇼핑 리스트를 짧게 줄여서 주소 뒤에 붙임 (서버 없이 카톡으로 전달)
   function encodePlan() {
     const compact = plan.days.map((d) => d.map((it) => [it.place || 0, it.time || '', it.place ? '' : (it.title || ''), it.memo || '', it.move ? 1 : 0]));
-    const bytes = new TextEncoder().encode(JSON.stringify({ v: 1, d: compact }));
+    const shopList = shop.map((x) => [x.name, x.note || '', x.done ? 1 : 0, x.rec || '']);
+    const bytes = new TextEncoder().encode(JSON.stringify({ v: 1, d: compact, s: shopList }));
     let s = '';
     bytes.forEach((b) => { s += String.fromCharCode(b); });
     return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -228,16 +229,21 @@
       const b = atob(str.replace(/-/g, '+').replace(/_/g, '/'));
       const obj = JSON.parse(new TextDecoder().decode(Uint8Array.from(b, (c) => c.charCodeAt(0))));
       if (!obj || !Array.isArray(obj.d) || obj.d.length !== DAYS.length) return null;
-      return obj.d.map((d) => d.map(([place, time, title, memo, move]) => (place && byId[place]
+      const days = obj.d.map((d) => d.map(([place, time, title, memo, move]) => (place && byId[place]
         ? { uid: newUid(), place, time, memo }
         : { uid: newUid(), title: title || '메모', time, memo, move: !!move })).filter((it) => it.place || it.title));
+      // 예전 링크에는 쇼핑 리스트가 없음 → null이면 내 쇼핑 리스트를 그대로 둠
+      const shopList = Array.isArray(obj.s)
+        ? obj.s.filter((x) => Array.isArray(x) && x[0]).map(([name, note, done, rec]) => ({ uid: newUid(), name: String(name).slice(0, 40), note: note || '', done: !!done, rec: rec || undefined }))
+        : null;
+      return { days, shop: shopList };
     } catch { return null; }
   }
   async function sharePlan() {
     const total = plan.days.reduce((n, d) => n + d.length, 0);
-    if (!total) { toast('아직 일정이 비어 있어요'); return; }
+    if (!total && !shop.length) { toast('아직 일정과 쇼핑 리스트가 비어 있어요'); return; }
     const url = `${location.origin}${location.pathname}#/import?d=${encodePlan()}`;
-    const text = '삿포로 여행 일정이에요. 링크를 누르면 내 폰에도 같은 일정이 들어가요 👇';
+    const text = '삿포로 여행 일정과 쇼핑 리스트예요. 링크를 누르면 내 폰에도 똑같이 들어가요 👇';
     if (navigator.share) {
       try { await navigator.share({ title: '삿포로 여행 일정', text, url }); return; } catch (e) { if (e.name === 'AbortError') return; }
     }
@@ -245,18 +251,20 @@
     catch { openSheet(`<h2 id="sheet-title" class="d-head" style="font-size:20px">일정 보내기</h2><p>아래 링크를 길게 눌러 복사해서 보내 주세요.</p><textarea readonly style="width:100%;height:120px;font-size:14px">${esc(url)}</textarea>`); }
   }
   function showImport(str) {
-    const days = decodePlan(str || '');
-    if (!days) { toast('일정 링크를 읽지 못했어요'); location.hash = '#/plan'; return; }
-    const summary = days.map((d, i) => {
+    const got = decodePlan(str || '');
+    if (!got) { toast('일정 링크를 읽지 못했어요'); location.hash = '#/plan'; return; }
+    const { days } = got;
+    const shopLine = got.shop && got.shop.length ? `<li><b>🛍 쇼핑 리스트</b> ${got.shop.length}개 (산 것 ${got.shop.filter((x) => x.done).length}개)</li>` : '';
+    const summary = shopLine + days.map((d, i) => {
       const names = d.filter((x) => x.place).map((x) => byId[x.place].name_ko);
       const what = !d.length ? '비어 있음' : names.length ? `${names.slice(0, 3).join(', ')}${names.length > 3 ? ' 외' : ''}` : '메모만';
       return `<li><b>${esc(DAYS[i].label)}</b> ${d.length}개 — ${esc(what)}</li>`;
     }).join('');
     openSheet(`<div class="d-head"><div class="cat">📩 받은 일정</div><h2 id="sheet-title">일정을 받았어요</h2></div>
       <ul class="stack" style="padding-left:20px;margin:14px 0">${summary}</ul>
-      <p class="small muted">내 폰에 있던 일정은 받은 일정으로 바뀌어요.</p>
-      <div class="btn-row"><button class="btn primary" data-import-accept>내 일정으로 저장</button><button class="btn" data-close-sheet>취소</button></div>`);
-    state.pendingImport = days;
+      <p class="small muted">내 폰에 있던 일정${shopLine ? '과 쇼핑 리스트' : ''}는 받은 내용으로 바뀌어요.</p>
+      <div class="btn-row"><button class="btn primary" data-import-accept>내 폰에 저장</button><button class="btn" data-close-sheet>취소</button></div>`);
+    state.pendingImport = got;
     history.replaceState(null, '', '#/plan');
   }
 
@@ -351,8 +359,8 @@
       </div>
       <h2 class="section-title">일정 관리</h2>
       <div class="card stack">
-        <button class="btn gold" data-share style="width:100%">📤 일정 보내기 (카톡 공유)</button>
-        <p class="small muted" style="margin:0">보낸 링크를 받은 사람이 누르면 같은 일정이 그 폰에도 들어가요. 일정은 각자 폰에 저장되니 고친 뒤에는 다시 보내 주세요.</p>
+        <button class="btn gold" data-share style="width:100%">📤 일정·쇼핑 리스트 보내기 (카톡 공유)</button>
+        <p class="small muted" style="margin:0">보낸 링크를 받은 사람이 누르면 같은 일정과 쇼핑 리스트가 그 폰에도 들어가요. 각자 폰에 저장되니 고친 뒤에는 다시 보내 주세요.</p>
         <button class="btn" data-import-rec style="width:100%">✨ 추천 일정 불러오기</button>
         <p class="small muted" style="margin:0">미리 짜 둔 2박 3일 코스(오타루 하루, 모이와산 기념일 디너 포함)로 채워요. 불러온 뒤 자유롭게 고칠 수 있어요.</p>
         ${plan.days.some((d) => d.length) ? '<button class="btn small" data-clear style="justify-self:start">일정 전부 지우기</button>' : ''}
@@ -428,6 +436,57 @@
       <div class="plist">${list.map(placeCard).join('')}</div>`;
   }
 
+  /* ---------------- 쇼핑 리스트 (휴대폰에 저장) ---------------- */
+  // item: { uid, name, note?, done, rec?: 추천 기념품 id }
+  let shop = store.get('shop_v1', []);
+  const saveShop = () => store.set('shop_v1', shop);
+  function shopHTML() {
+    const total = shop.length, done = shop.filter((x) => x.done).length;
+    const visible = state.hideBought ? shop.filter((x) => !x.done) : shop;
+    const items = visible.map((x) => `<li class="shop-item${x.done ? ' done' : ''}">
+        <label><input type="checkbox" data-shop-check="${esc(x.uid)}" ${x.done ? 'checked' : ''}>
+          <span><b>${esc(x.name)}</b>${x.note ? `<small>${esc(x.note)}</small>` : ''}</span></label>
+        <button class="shop-del" data-shop-del="${esc(x.uid)}" aria-label="${esc(x.name)} 지우기">✕</button>
+      </li>`).join('');
+    const recs = SHOP.recs.map((r) => {
+      const added = shop.some((x) => x.rec === r.id);
+      return `<div class="pick-row">
+        <span class="pi-emoji" aria-hidden="true">${r.emoji}</span>
+        <span class="pi-main"><b>${esc(r.name)}</b><span class="small muted">${esc(r.ja)}</span>
+          <span class="small" style="display:block;margin-top:2px">${esc(r.desc)}</span>
+          <span class="small muted" style="display:block">📍 ${esc(r.where)}${r.price ? ` · ${esc(r.price)}` : ''}${r.cold ? ' · ❄️ 냉장' : ''}${r.liquid ? ' · 💧 위탁 수하물' : ''}</span>
+          ${r.place ? `<button class="linkish small" data-open="${esc(r.place)}">가게 보기 ›</button>` : ''}</span>
+        <button class="btn small ${added ? '' : 'primary'}" data-shop-rec="${esc(r.id)}">${added ? '✓ 담음' : '＋ 담기'}</button>
+      </div>`;
+    }).join('');
+    return `<h2 class="section-title" id="sec-shop">🛍 쇼핑 리스트</h2>
+      <div class="card stack">
+        <div class="shop-head">
+          <b>${total ? `${done} / ${total} 샀어요` : '살 것을 적어 두세요'}</b>
+          ${done ? `<button class="linkish small" data-shop-hide>${state.hideBought ? '산 것도 보기' : '산 것 숨기기'}</button>` : ''}
+        </div>
+        ${total ? `<div class="shop-bar"><span style="width:${Math.round((done / total) * 100)}%"></span></div>` : ''}
+        <form class="shop-add" data-shop-add>
+          <input name="name" maxlength="40" placeholder="예: 회사 동료 줄 초콜릿 5개" aria-label="살 것" required>
+          <button class="btn primary small" type="submit">추가</button>
+        </form>
+        ${visible.length ? `<ul class="shop-list">${items}</ul>` : total ? '<p class="small muted" style="margin:0">다 샀어요! 🎉</p>' : '<p class="small muted" style="margin:0">직접 적거나, 아래 추천 기념품에서 <b>＋ 담기</b>를 눌러 보세요.</p>'}
+        ${total ? '<button class="btn small" data-share style="justify-self:start">📤 쇼핑 리스트 보내기 (일정과 함께)</button>' : ''}
+      </div>
+      <details class="card shop-recs" ${total ? '' : 'open'}>
+        <summary>🎁 삿포로 추천 기념품 <span class="small muted">${SHOP.recs.length}가지</span></summary>
+        <div class="pick-list" style="margin-top:10px">${recs}</div>
+      </details>
+      <div class="card" style="margin-top:12px"><b>💡 쇼핑할 때 알아 둘 것</b>
+        <ul class="stack" style="margin:8px 0 0;padding-left:20px;font-size:15px">${SHOP.tips.map((t) => `<li>${t}</li>`).join('')}</ul></div>`;
+  }
+  function rerenderShop() {
+    // 입력 중인 칸이 사라지지 않도록 쇼핑 부분만 다시 그리기
+    const y = window.scrollY;
+    renderInfo();
+    window.scrollTo(0, y);
+  }
+
   /* ---------------- 정보 ---------------- */
   function routeOption(o) {
     return `<div class="card opt${o.rec ? ' rec' : ''}">
@@ -441,8 +500,12 @@
   function renderInfo() {
     const h = HOTEL;
     const checks = store.get('checks', {});
+    const jumps = [['shop', '🛍 쇼핑'], ['hotel', '🏨 호텔'], ['airport', '✈️ 공항'], ['weather', '🧥 날씨'], ['phrase', '🗣 일본어'], ['sos', '🚨 긴급']]
+      .map(([k, l]) => `<button class="chip" data-jump="sec-${k}">${l}</button>`).join('');
     view.innerHTML = `
-      <h2 class="section-title">🏨 호텔</h2>
+      <div class="filters">${jumps}</div>
+      ${shopHTML()}
+      <h2 class="section-title" id="sec-hotel">🏨 호텔</h2>
       <div class="card stack">
         <div><h3 style="font-size:19px">${esc(h.name_ko)}</h3><div class="muted">${esc(h.name_ja)}</div></div>
         <dl class="facts">
@@ -466,13 +529,13 @@
           <button class="btn small" data-open="${esc(p.id)}">예약 방법</button></div>`;
       }).join('')}</div>
 
-      <h2 class="section-title">✈️ 공항 → 호텔 (도착일)</h2>
+      <h2 class="section-title" id="sec-airport">✈️ 공항 → 호텔 (도착일)</h2>
       <div class="stack">${AIRPORT.to.map(routeOption).join('')}</div>
 
       <h2 class="section-title">🛫 호텔 → 공항 (귀국일)</h2>
       <div class="stack">${AIRPORT.from.map(routeOption).join('')}</div>
 
-      <h2 class="section-title">🧥 날씨·준비물</h2>
+      <h2 class="section-title" id="sec-weather">🧥 날씨·준비물</h2>
       <div class="card stack">
         <p style="margin:0">${INFO.weather}</p>
         <div class="checklist">${INFO.packing.map((x, i) => `<label><input type="checkbox" data-check="${i}" ${checks[i] ? 'checked' : ''}><span>${esc(x)}</span></label>`).join('')}</div>
@@ -481,11 +544,11 @@
       <h2 class="section-title">💡 알아두면 좋은 것</h2>
       <div class="card"><ul style="margin:0;padding-left:20px" class="stack">${INFO.tips.map((t) => `<li>${t}</li>`).join('')}</ul></div>
 
-      <h2 class="section-title">🗣 일본어 한마디 <span class="small muted">(누르면 크게 보여요)</span></h2>
+      <h2 class="section-title" id="sec-phrase">🗣 일본어 한마디 <span class="small muted">(누르면 크게 보여요)</span></h2>
       <div class="card" style="padding:4px 16px">${INFO.phrases.map((p, i) => `<div class="phrase" data-phrase="${i}" role="button" tabindex="0">
         <span class="ko">${esc(p.ko)}</span><span class="ja">${esc(p.ja)}</span><span class="rd">${esc(p.rd)}</span></div>`).join('')}</div>
 
-      <h2 class="section-title">🚨 긴급 연락처</h2>
+      <h2 class="section-title" id="sec-sos">🚨 긴급 연락처</h2>
       <div class="card"><dl class="facts">${INFO.emergency.map((e) => `<dt>${esc(e.label)}</dt><dd>${e.tel ? `<a href="tel:${esc(e.tel)}">${esc(e.value)}</a>` : esc(e.value)}</dd>`).join('')}</dl></div>
       <p class="small muted" style="margin-top:20px">영업시간·휴무일은 ${esc(TRIP.checked)} 기준으로 조사한 정보예요. 출발 전 구글맵에서 한 번 더 확인해 주세요.</p>`;
   }
@@ -732,8 +795,30 @@
   document.addEventListener('click', (e) => {
     const t = e.target.closest('[data-open],[data-taxi],[data-day],[data-cat],[data-sort],[data-geo],[data-mapf],[data-phrase],[data-close],[data-confirm],'
       + '[data-toggle-day],[data-pick],[data-pickf],[data-picker],[data-memo-form],[data-edit],[data-sort-time],[data-move],[data-del],'
-      + '[data-share],[data-import-rec],[data-import-accept],[data-clear],[data-close-sheet]');
+      + '[data-share],[data-import-rec],[data-import-accept],[data-clear],[data-close-sheet],'
+      + '[data-jump],[data-shop-del],[data-shop-rec],[data-shop-hide]');
     if (!t || t.disabled) return;
+    if (t.dataset.jump) {
+      const el = document.getElementById(t.dataset.jump);
+      if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - $('.top').offsetHeight - 8, behavior: 'smooth' });
+      return;
+    }
+    if (t.dataset.shopDel) {
+      const item = shop.find((x) => x.uid === t.dataset.shopDel);
+      shop = shop.filter((x) => x !== item);
+      saveShop(); rerenderShop();
+      if (item) toast(`「${item.name}」 항목을 지웠어요`);
+      return;
+    }
+    if (t.dataset.shopRec) {
+      const r = SHOP.recs.find((x) => x.id === t.dataset.shopRec);
+      const i = shop.findIndex((x) => x.rec === r.id);
+      if (i >= 0) { shop.splice(i, 1); toast('쇼핑 리스트에서 뺐어요'); }
+      else { shop.push({ uid: newUid(), name: r.name, note: r.where, done: false, rec: r.id }); toast('쇼핑 리스트에 담았어요 ✓'); }
+      saveShop(); rerenderShop();
+      return;
+    }
+    if (t.hasAttribute('data-shop-hide')) { state.hideBought = !state.hideBought; rerenderShop(); return; }
     if (t.dataset.open) { openPlace(t.dataset.open); return; }
     if (t.dataset.taxi) { showTaxi(t.dataset.taxi); return; }
     if (t.dataset.toggleDay != null) {
@@ -792,7 +877,12 @@
       return;
     }
     if (t.hasAttribute('data-import-accept')) {
-      if (state.pendingImport) { plan.days = state.pendingImport; state.pendingImport = null; savePlan(); }
+      const got = state.pendingImport;
+      if (got) {
+        plan.days = got.days; savePlan();
+        if (got.shop && got.shop.length) { shop = got.shop; saveShop(); }
+        state.pendingImport = null;
+      }
       state.dirty = true; closeSheet(); toast('받은 일정을 저장했어요 ✓');
       return;
     }
@@ -819,6 +909,16 @@
     if (e.target.matches('[data-pickq]')) { state.pickQ = e.target.value; $('#pick-list').innerHTML = pickerListHTML(); }
   });
   document.addEventListener('submit', (e) => {
+    if (e.target.matches('[data-shop-add]')) {
+      e.preventDefault();
+      const name = String(new FormData(e.target).get('name') || '').trim();
+      if (!name) return;
+      shop.push({ uid: newUid(), name, done: false });
+      saveShop(); rerenderShop();
+      const input = $('[data-shop-add] input');
+      if (input) input.focus({ preventScroll: true });
+      return;
+    }
     if (!e.target.matches('[data-memo-save]')) return;
     e.preventDefault();
     const f = new FormData(e.target);
@@ -828,6 +928,12 @@
     savePlan(); state.dirty = true; closeSheet(); toast('메모를 추가했어요');
   });
   document.addEventListener('change', (e) => {
+    const sc = e.target.closest('[data-shop-check]');
+    if (sc) {
+      const item = shop.find((x) => x.uid === sc.dataset.shopCheck);
+      if (item) { item.done = sc.checked; saveShop(); rerenderShop(); }
+      return;
+    }
     const tm = e.target.closest('[data-time]');
     if (tm) { const [d, i] = findItem(tm.dataset.time); if (d) { d[i].time = tm.value; savePlan(); } return; }
     const c = e.target.closest('[data-check]');
