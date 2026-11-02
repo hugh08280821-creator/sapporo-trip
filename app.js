@@ -459,8 +459,7 @@
         <button class="btn small ${added ? '' : 'primary'}" data-shop-rec="${esc(r.id)}">${added ? '✓ 담음' : '＋ 담기'}</button>
       </div>`;
     }).join('');
-    return `<h2 class="section-title" id="sec-shop">🛍 쇼핑 리스트</h2>
-      <div class="card stack">
+    return `<div class="card stack">
         <div class="shop-head">
           <b>${total ? `${done} / ${total} 샀어요` : '살 것을 적어 두세요'}</b>
           ${done ? `<button class="linkish small" data-shop-hide>${state.hideBought ? '산 것도 보기' : '산 것 숨기기'}</button>` : ''}
@@ -497,15 +496,30 @@
     </div>`;
   }
 
+  // 정보 탭 섹션: 제목을 눌러 열고 닫기, 열림 상태는 휴대폰에 기억
+  const INFO_OPEN_DEFAULT = { shop: true, hotel: true };
+  const infoOpen = (key) => { const o = store.get('infoOpen', INFO_OPEN_DEFAULT); return key in o ? o[key] : !!INFO_OPEN_DEFAULT[key]; };
+  function setInfoOpen(key, open) { const o = store.get('infoOpen', { ...INFO_OPEN_DEFAULT }); o[key] = open; store.set('infoOpen', o); }
+  function sec(key, title, body, hint = '') {
+    return `<details class="sec" id="sec-${key}" data-sec="${key}" ${infoOpen(key) ? 'open' : ''}>
+      <summary class="sec-title"><span>${title}</span>${hint ? `<span class="sec-hint">${hint}</span>` : ''}</summary>
+      <div class="sec-body">${body}</div>
+    </details>`;
+  }
+
   function renderInfo() {
     const h = HOTEL;
     const checks = store.get('checks', {});
-    const jumps = [['shop', '🛍 쇼핑'], ['hotel', '🏨 호텔'], ['airport', '✈️ 공항'], ['weather', '🧥 날씨'], ['phrase', '🗣 일본어'], ['sos', '🚨 긴급']]
-      .map(([k, l]) => `<button class="chip" data-jump="sec-${k}">${l}</button>`).join('');
+    const packed = INFO.packing.filter((_, i) => checks[i]).length;
+    const bought = shop.filter((x) => x.done).length;
+    const jumps = [['shop', '🛍 쇼핑'], ['hotel', '🏨 호텔'], ['reserve', '📞 예약'], ['airport', '✈️ 공항'], ['weather', '🧥 준비물'], ['phrase', '🗣 일본어'], ['sos', '🚨 긴급']]
+      .map(([k, l]) => `<button class="chip" data-jump="${k}">${l}</button>`).join('');
+    const allOpen = ['shop', 'hotel', 'reserve', 'airport', 'airport-back', 'weather', 'tips', 'phrase', 'sos'].every(infoOpen);
     view.innerHTML = `
       <div class="filters">${jumps}</div>
-      ${shopHTML()}
-      <h2 class="section-title" id="sec-hotel">🏨 호텔</h2>
+      <div class="sec-tools"><button class="linkish small" data-sec-all="${allOpen ? '0' : '1'}">${allOpen ? '모두 접기' : '모두 펼치기'}</button></div>
+      ${sec('shop', '🛍 쇼핑 리스트', shopHTML(), shop.length ? `${bought}/${shop.length}` : '')}
+      ${sec('hotel', '🏨 호텔', `
       <div class="card stack">
         <div><h3 style="font-size:19px">${esc(h.name_ko)}</h3><div class="muted">${esc(h.name_ja)}</div></div>
         <dl class="facts">
@@ -519,37 +533,24 @@
           <button class="btn" data-taxi="hotel">🚕 택시에 보여주기</button>
         </div>
         ${h.tip ? `<div class="tip">${h.tip}</div>` : ''}
-      </div>
-
-      <h2 class="section-title">📞 미리 예약할 곳</h2>
-      <div class="card stack">${INFO.reservations.map((r) => {
+      </div>`)}
+      ${sec('reserve', '📞 미리 예약할 곳', `<div class="card stack">${INFO.reservations.map((r) => {
         const p = byId[r.place];
         return `<div style="display:flex;gap:12px;align-items:center">
           <div style="flex:1;min-width:0"><b>${esc(p.name_ko)}</b><div class="small muted">${esc(r.when)} · ${esc(r.note)}</div></div>
           <button class="btn small" data-open="${esc(p.id)}">예약 방법</button></div>`;
-      }).join('')}</div>
-
-      <h2 class="section-title" id="sec-airport">✈️ 공항 → 호텔 (도착일)</h2>
-      <div class="stack">${AIRPORT.to.map(routeOption).join('')}</div>
-
-      <h2 class="section-title">🛫 호텔 → 공항 (귀국일)</h2>
-      <div class="stack">${AIRPORT.from.map(routeOption).join('')}</div>
-
-      <h2 class="section-title" id="sec-weather">🧥 날씨·준비물</h2>
-      <div class="card stack">
+      }).join('')}</div>`, `${INFO.reservations.length}곳`)}
+      ${sec('airport', '✈️ 공항 → 호텔 (도착일)', `<div class="stack">${AIRPORT.to.map(routeOption).join('')}</div>`)}
+      ${sec('airport-back', '🛫 호텔 → 공항 (귀국일)', `<div class="stack">${AIRPORT.from.map(routeOption).join('')}</div>`)}
+      ${sec('weather', '🧥 날씨·준비물', `<div class="card stack">
         <p style="margin:0">${INFO.weather}</p>
         <div class="checklist">${INFO.packing.map((x, i) => `<label><input type="checkbox" data-check="${i}" ${checks[i] ? 'checked' : ''}><span>${esc(x)}</span></label>`).join('')}</div>
-      </div>
-
-      <h2 class="section-title">💡 알아두면 좋은 것</h2>
-      <div class="card"><ul style="margin:0;padding-left:20px" class="stack">${INFO.tips.map((t) => `<li>${t}</li>`).join('')}</ul></div>
-
-      <h2 class="section-title" id="sec-phrase">🗣 일본어 한마디 <span class="small muted">(누르면 크게 보여요)</span></h2>
+      </div>`, `${packed}/${INFO.packing.length}`)}
+      ${sec('tips', '💡 알아두면 좋은 것', `<div class="card"><ul style="margin:0;padding-left:20px" class="stack">${INFO.tips.map((t) => `<li>${t}</li>`).join('')}</ul></div>`)}
+      ${sec('phrase', '🗣 일본어 한마디', `<p class="small muted" style="margin:0 0 8px">문장을 누르면 크게 보여요.</p>
       <div class="card" style="padding:4px 16px">${INFO.phrases.map((p, i) => `<div class="phrase" data-phrase="${i}" role="button" tabindex="0">
-        <span class="ko">${esc(p.ko)}</span><span class="ja">${esc(p.ja)}</span><span class="rd">${esc(p.rd)}</span></div>`).join('')}</div>
-
-      <h2 class="section-title" id="sec-sos">🚨 긴급 연락처</h2>
-      <div class="card"><dl class="facts">${INFO.emergency.map((e) => `<dt>${esc(e.label)}</dt><dd>${e.tel ? `<a href="tel:${esc(e.tel)}">${esc(e.value)}</a>` : esc(e.value)}</dd>`).join('')}</dl></div>
+        <span class="ko">${esc(p.ko)}</span><span class="ja">${esc(p.ja)}</span><span class="rd">${esc(p.rd)}</span></div>`).join('')}</div>`)}
+      ${sec('sos', '🚨 긴급 연락처', `<div class="card"><dl class="facts">${INFO.emergency.map((e) => `<dt>${esc(e.label)}</dt><dd>${e.tel ? `<a href="tel:${esc(e.tel)}">${esc(e.value)}</a>` : esc(e.value)}</dd>`).join('')}</dl></div>`)}
       <p class="small muted" style="margin-top:20px">영업시간·휴무일은 ${esc(TRIP.checked)} 기준으로 조사한 정보예요. 출발 전 구글맵에서 한 번 더 확인해 주세요.</p>`;
   }
 
@@ -796,11 +797,22 @@
     const t = e.target.closest('[data-open],[data-taxi],[data-day],[data-cat],[data-sort],[data-geo],[data-mapf],[data-phrase],[data-close],[data-confirm],'
       + '[data-toggle-day],[data-pick],[data-pickf],[data-picker],[data-memo-form],[data-edit],[data-sort-time],[data-move],[data-del],'
       + '[data-share],[data-import-rec],[data-import-accept],[data-clear],[data-close-sheet],'
-      + '[data-jump],[data-shop-del],[data-shop-rec],[data-shop-hide]');
+      + '[data-jump],[data-sec-all],[data-shop-del],[data-shop-rec],[data-shop-hide]');
     if (!t || t.disabled) return;
     if (t.dataset.jump) {
-      const el = document.getElementById(t.dataset.jump);
-      if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - $('.top').offsetHeight - 8, behavior: 'smooth' });
+      const el = document.getElementById(`sec-${t.dataset.jump}`);
+      if (el) {
+        el.open = true;
+        setInfoOpen(t.dataset.jump, true);
+        window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - $('.top').offsetHeight - 8, behavior: 'smooth' });
+      }
+      return;
+    }
+    if (t.dataset.secAll != null) {
+      const open = t.dataset.secAll === '1';
+      document.querySelectorAll('details.sec').forEach((d) => { d.open = open; setInfoOpen(d.dataset.sec, open); });
+      t.dataset.secAll = open ? '0' : '1';
+      t.textContent = open ? '모두 접기' : '모두 펼치기';
       return;
     }
     if (t.dataset.shopDel) {
@@ -941,7 +953,14 @@
     const checks = store.get('checks', {});
     checks[c.dataset.check] = c.checked;
     store.set('checks', checks);
+    const hint = $('#sec-weather .sec-hint');
+    if (hint) hint.textContent = `${INFO.packing.filter((_, i) => checks[i]).length}/${INFO.packing.length}`;
   });
+  // 정보 탭 섹션을 열고 닫으면 기억 (toggle 이벤트는 버블링되지 않아 capture로 받음)
+  document.addEventListener('toggle', (e) => {
+    const d = e.target;
+    if (d.matches && d.matches('details.sec')) setInfoOpen(d.dataset.sec, d.open);
+  }, true);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { closeSheet(); $('#showcard').hidden = true; }
     if (e.key === 'Enter' && e.target.dataset && e.target.dataset.phrase != null) showPhrase(Number(e.target.dataset.phrase));
