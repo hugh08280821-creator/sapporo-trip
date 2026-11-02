@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>삿포로 기념일 여행</title>
+<meta name="description" content="결혼기념일 삿포로 2박 3일 여행 가이드 — 일정, 맛집, 명소, 실시간 길찾기">
+<meta name="theme-color" content="#14213a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="삿포로 여행">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <div>
+      <p class="eyebrow" id="dday">결혼기념일 여행</p>
+      <h1 id="page-title">삿포로 2박 3일</h1>
+    </div>
+    <button class="loc-pill" id="loc-pill" type="button" aria-live="polite">
+      <span class="dot"></span><span class="loc-text">내 위치 켜기</span>
+    </button>
+  </div>
+</header>
+
+<main id="view" tabindex="-1"></main>
+
+<div class="map-wrap" id="map-wrap" hidden>
+  <div id="map"></div>
+  <div class="map-chips" id="map-chips"></div>
+  <div class="map-actions">
+    <button type="button" class="fab" id="btn-locate" aria-label="내 위치로 이동">◎</button>
+  </div>
+</div>
+
+<nav class="tabbar" aria-label="메뉴">
+  <a href="#/plan" data-tab="plan"><span class="ti">🗓</span>일정</a>
+  <a href="#/map" data-tab="map"><span class="ti">🗺</span>지도</a>
+  <a href="#/food" data-tab="food"><span class="ti">🍣</span>맛집</a>
+  <a href="#/sights" data-tab="sights"><span class="ti">⛩</span>명소</a>
+  <a href="#/info" data-tab="info"><span class="ti">🧳</span>정보</a>
+</nav>
+
+<div class="sheet-backdrop" id="sheet-backdrop" hidden></div>
+<section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
+  <div class="sheet-handle" aria-hidden="true"></div>
+  <button type="button" class="sheet-close" id="sheet-close" aria-label="닫기">✕</button>
+  <div class="sheet-body" id="sheet-body"></div>
+</section>
+
+<div class="showcard" id="showcard" hidden>
+  <div class="showcard-inner" id="showcard-inner"></div>
+  <button type="button" class="showcard-close" id="showcard-close">닫기</button>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
