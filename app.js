@@ -165,8 +165,10 @@
         <span class="tl-meta">
           <span class="tag">${esc(catOf(p).label)}</span>
           ${p.price ? `<span class="tag">${esc(p.price)}</span>` : ''}
+          ${p.rating ? `<span class="tag">★ ${esc(p.rating)}</span>` : ''}
           ${p.route ? `<span class="tag">🏨 ${esc(p.route.min)}분</span>` : ''}
           ${cw ? `<span class="tag warn">${esc(cw)}</span>` : ''}
+          ${plannedDays(p.id).map((i) => `<span class="tag ok">✓ ${esc(DAYS[i].label)}</span>`).join('')}
           <span class="tag dist" data-dist="${esc(p.id)}" hidden></span>
         </span>
       </span>
@@ -185,21 +187,127 @@
     return '';
   }
 
-  /* ---------------- 일정 ---------------- */
+  /* ---------------- 내 일정 (휴대폰에 저장) ---------------- */
+  // item: { uid, place?: 장소 id, title?: 메모 제목, time?: 'HH:MM', memo?: 한 줄 메모, move?: 이동 메모 }
+  const plan = (() => {
+    const p = store.get('plan_v1', null);
+    return p && Array.isArray(p.days) && p.days.length === DAYS.length ? p : { days: DAYS.map(() => []) };
+  })();
+  const newUid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const stripTags = (h) => String(h).replace(/<[^>]+>/g, '');
+  function savePlan() { store.set('plan_v1', plan); }
+  function plannedDays(placeId) {
+    return plan.days.map((d, i) => (d.some((it) => it.place === placeId) ? i : -1)).filter((i) => i >= 0);
+  }
+  function togglePlace(placeId, dayIdx) {
+    const day = plan.days[dayIdx];
+    const i = day.findIndex((it) => it.place === placeId);
+    if (i >= 0) { day.splice(i, 1); toast(`${DAYS[dayIdx].label} 일정에서 뺐어요`); }
+    else { day.push({ uid: newUid(), place: placeId }); toast(`${DAYS[dayIdx].label} 일정에 넣었어요 ✓`); }
+    savePlan();
+  }
+  function recommendedPlan() {
+    return DAYS.map((d) => d.items.map((it) => (it.place
+      ? { uid: newUid(), place: it.place, time: it.time, memo: it.text || '' }
+      : { uid: newUid(), title: it.kind === 'move' ? stripTags(it.text).replace(/^[^\p{L}\p{N}]+/u, '') : it.title, time: it.time, memo: it.kind === 'move' ? '' : (it.text || ''), move: it.kind === 'move' })));
+  }
+
+  // 공유 링크: 일정을 짧게 줄여서 주소 뒤에 붙임 (서버 없이 카톡으로 전달)
+  function encodePlan() {
+    const compact = plan.days.map((d) => d.map((it) => [it.place || 0, it.time || '', it.place ? '' : (it.title || ''), it.memo || '', it.move ? 1 : 0]));
+    const bytes = new TextEncoder().encode(JSON.stringify({ v: 1, d: compact }));
+    let s = '';
+    bytes.forEach((b) => { s += String.fromCharCode(b); });
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function decodePlan(str) {
+    try {
+      const b = atob(str.replace(/-/g, '+').replace(/_/g, '/'));
+      const obj = JSON.parse(new TextDecoder().decode(Uint8Array.from(b, (c) => c.charCodeAt(0))));
+      if (!obj || !Array.isArray(obj.d) || obj.d.length !== DAYS.length) return null;
+      return obj.d.map((d) => d.map(([place, time, title, memo, move]) => (place && byId[place]
+        ? { uid: newUid(), place, time, memo }
+        : { uid: newUid(), title: title || '메모', time, memo, move: !!move })).filter((it) => it.place || it.title));
+    } catch { return null; }
+  }
+  async function sharePlan() {
+    const total = plan.days.reduce((n, d) => n + d.length, 0);
+    if (!total) { toast('아직 일정이 비어 있어요'); return; }
+    const url = `${location.origin}${location.pathname}#/import?d=${encodePlan()}`;
+    const text = '삿포로 여행 일정이에요. 링크를 누르면 내 폰에도 같은 일정이 들어가요 👇';
+    if (navigator.share) {
+      try { await navigator.share({ title: '삿포로 여행 일정', text, url }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    try { await navigator.clipboard.writeText(`${text}\n${url}`); toast('링크를 복사했어요. 카톡에 붙여넣기 하세요'); }
+    catch { openSheet(`<h2 id="sheet-title" class="d-head" style="font-size:20px">일정 보내기</h2><p>아래 링크를 길게 눌러 복사해서 보내 주세요.</p><textarea readonly style="width:100%;height:120px;font-size:14px">${esc(url)}</textarea>`); }
+  }
+  function showImport(str) {
+    const days = decodePlan(str || '');
+    if (!days) { toast('일정 링크를 읽지 못했어요'); location.hash = '#/plan'; return; }
+    const summary = days.map((d, i) => {
+      const names = d.filter((x) => x.place).map((x) => byId[x.place].name_ko);
+      const what = !d.length ? '비어 있음' : names.length ? `${names.slice(0, 3).join(', ')}${names.length > 3 ? ' 외' : ''}` : '메모만';
+      return `<li><b>${esc(DAYS[i].label)}</b> ${d.length}개 — ${esc(what)}</li>`;
+    }).join('');
+    openSheet(`<div class="d-head"><div class="cat">📩 받은 일정</div><h2 id="sheet-title">일정을 받았어요</h2></div>
+      <ul class="stack" style="padding-left:20px;margin:14px 0">${summary}</ul>
+      <p class="small muted">내 폰에 있던 일정은 받은 일정으로 바뀌어요.</p>
+      <div class="btn-row"><button class="btn primary" data-import-accept>내 일정으로 저장</button><button class="btn" data-close-sheet>취소</button></div>`);
+    state.pendingImport = days;
+    history.replaceState(null, '', '#/plan');
+  }
+
+  function travelHint(a, b) {
+    const d = haversine(a, b);
+    const how = d < 1200 ? `🚶 걸어서 약 ${walkMin(d)}분` : d < 4000 ? `🚇 약 ${fmtDist(d)} · 지하철이나 택시` : `🚆 약 ${fmtDist(d)} · 대중교통`;
+    const u = new URL('https://www.google.com/maps/dir/');
+    u.searchParams.set('api', '1');
+    u.searchParams.set('origin', `${a.lat},${a.lng}`);
+    u.searchParams.set('destination', b.navQuery || `${b.lat},${b.lng}`);
+    u.searchParams.set('travelmode', d < 1200 ? 'walking' : 'transit');
+    return `<li class="hint">${how} <a href="${u}" target="_blank" rel="noopener">길 보기</a></li>`;
+  }
+
+  function planItemHTML(it, i, day, dayIdx, editing, isToday, hm) {
+    const p = it.place ? byId[it.place] : null;
+    const done = isToday && it.time && it.time < hm;
+    const title = p ? p.name_ko : it.title;
+    const emoji = p ? catOf(p).emoji : it.move ? '➡️' : '📝';
+    const cw = p ? closedWarn(p, DAYS[dayIdx].date) : '';
+    const controls = editing ? `<div class="pi-edit">
+        <input type="time" value="${esc(it.time || '')}" data-time="${esc(it.uid)}" aria-label="시간">
+        <button class="btn small" data-move="${esc(it.uid)}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="위로">▲</button>
+        <button class="btn small" data-move="${esc(it.uid)}" data-dir="1" ${i === day.length - 1 ? 'disabled' : ''} aria-label="아래로">▼</button>
+        <button class="btn small danger" data-del="${esc(it.uid)}" aria-label="삭제">삭제</button>
+      </div>` : '';
+    const body = `<span class="pi-emoji" aria-hidden="true">${emoji}</span>
+      <span class="pi-main"><h3>${esc(title)}</h3>
+        ${it.memo ? `<p>${esc(it.memo)}</p>` : p ? `<p class="muted">${esc(p.area)} · ${esc(catOf(p).label)}${p.rating ? ` · ★${esc(p.rating)}` : ''}</p>` : ''}
+        ${p ? `<span class="tl-meta">${cw ? `<span class="tag warn">${esc(cw)}</span>` : ''}<span class="tag dist" data-dist="${esc(p.id)}" hidden></span></span>` : ''}
+      </span>`;
+    return `<li class="pi${it.move ? ' is-move' : ''}${done ? ' done' : ''}">
+      <div class="pi-time">${esc(it.time || '')}</div>
+      <div class="pi-card">
+        ${p && !editing ? `<button type="button" class="pi-row" data-open="${esc(p.id)}">${body}</button>` : `<div class="pi-row">${body}</div>`}
+        ${controls}
+      </div></li>`;
+  }
+
   function renderPlan(dayIdx) {
     const cur = currentDayIndex();
     if (dayIdx == null) dayIdx = state.day ?? (cur >= 0 ? cur : 0);
     state.day = dayIdx;
-    const day = DAYS[dayIdx];
+    const day = plan.days[dayIdx];
     const dd = dday();
-    const isToday = day.date === todayISO();
+    const isToday = DAYS[dayIdx].date === todayISO();
     const hm = nowHM();
+    const editing = !!state.editing;
 
     let hero;
     if (cur >= 0) {
-      const next = DAYS[cur].items.find((it) => it.time && it.time >= hm && it.kind !== 'move');
+      const next = [...plan.days[cur]].filter((it) => it.time && it.time >= hm && !it.move).sort((a, b) => a.time.localeCompare(b.time))[0];
       hero = `<div class="hero"><h2>${esc(DAYS[cur].label)} · 즐거운 여행 되세요!</h2>
-        <p>${next ? `다음 일정 <b>${esc(next.time)}</b> ${esc(next.place ? byId[next.place].name_ko : next.title)}` : '오늘 일정을 모두 마쳤어요. 푹 쉬세요 🌙'}</p>
+        <p>${next ? `다음 일정 <b>${esc(next.time)}</b> ${esc(next.place ? byId[next.place].name_ko : next.title)}` : '오늘도 좋은 하루 보내세요 🌙'}</p>
         <div class="now"><a class="btn gold" href="${gmapsDir(HOTEL, 'transit')}" target="_blank" rel="noopener">🏨 호텔로 돌아가기</a>
         <button class="btn" data-taxi="hotel">🚕 택시에 보여주기</button></div></div>`;
     } else if (dd > 0) {
@@ -209,30 +317,87 @@
     }
 
     const tabs = DAYS.map((d, i) => `<button class="daytab" role="tab" aria-selected="${i === dayIdx}" data-day="${i}">
-        <b>${esc(d.label)}</b><span>${esc(d.dateLabel)}</span></button>`).join('');
+        <b>${esc(d.label)}</b><span>${esc(d.dateLabel)}</span><em>${plan.days[i].length ? `${plan.days[i].length}개` : '비어 있음'}</em></button>`).join('');
 
-    const items = day.items.map((it) => {
-      const p = it.place ? byId[it.place] : null;
-      const done = isToday && it.time && it.time < hm && day.items.some((x) => x.time && x.time >= hm);
-      if (it.kind === 'move') {
-        return `<li class="tl-item kind-move${done ? ' done' : ''}"><div class="tl-time">${esc(it.time || '')}</div><div class="tl-dot"></div>
-          <div class="tl-body"><div class="tl-move">${it.text}</div></div></li>`;
+    let list = '';
+    day.forEach((it, i) => {
+      if (i > 0) {
+        const prev = [...day.slice(0, i)].reverse().find((x) => x.place);
+        if (prev && it.place && !editing) list += travelHint(byId[prev.place], byId[it.place]);
       }
-      const cw = p ? closedWarn(p, day.date) : '';
-      const title = it.title || (p && p.name_ko) || '';
-      const sub = it.text || (p && p.desc) || '';
-      const kind = it.kind || (p ? p.type : 'sight');
-      const tag = p ? `<span class="tl-meta">${it.alt ? `<span class="tag">대안: ${it.alt.map((a) => esc(byId[a].name_ko)).join(', ')}</span>` : ''}${cw ? `<span class="tag warn">${cw}</span>` : ''}<span class="tag dist" data-dist="${esc(p.id)}" hidden></span></span>` : '';
-      const inner = `<h3>${esc(title)}</h3>${sub ? `<p>${esc(sub)}</p>` : ''}${tag}`;
-      return `<li class="tl-item kind-${esc(kind)}${done ? ' done' : ''}"><div class="tl-time">${esc(it.time || '')}</div><div class="tl-dot"></div>
-        <div class="tl-body">${p ? `<button type="button" class="tl-card" data-open="${esc(p.id)}">${inner}</button>` : `<div class="tl-card" style="cursor:default">${inner}</div>`}</div></li>`;
-    }).join('');
+      list += planItemHTML(it, i, day, dayIdx, editing, isToday, hm);
+    });
+
+    const empty = `<div class="empty card">
+        <div style="font-size:40px">🗓</div>
+        <h3>${esc(DAYS[dayIdx].label)} 일정이 비어 있어요</h3>
+        <p class="muted">「맛집」·「명소」 탭에서 가고 싶은 곳을 골라 <b>📅 일정에 넣기</b>를 누르거나, 아래 버튼으로 바로 추가하세요.</p>
+      </div>`;
 
     view.innerHTML = `<div id="near-slot">${nearBannerHTML()}</div>${hero}
       <div class="daytabs" role="tablist">${tabs}</div>
-      <div class="day-head"><h2>${esc(day.title)}</h2><p>${esc(day.summary)}</p></div>
-      <ol class="timeline">${items}</ol>
-      ${day.note ? `<div class="tip">${day.note}</div>` : ''}`;
+      <div class="plan-tools">
+        <span class="plan-date">${esc(DAYS[dayIdx].dateLabel)}</span>
+        ${day.length ? `<button class="btn small" data-edit>${editing ? '✓ 완료' : '✏️ 편집'}</button>` : ''}
+        ${editing && day.length > 1 ? '<button class="btn small" data-sort-time>⏱ 시간순</button>' : ''}
+      </div>
+      ${day.length ? `<ol class="plan-list">${list}</ol>` : empty}
+      <div class="btn-row" style="margin-top:14px">
+        <button class="btn primary" data-picker>＋ 장소 추가</button>
+        <button class="btn" data-memo-form>＋ 메모 추가</button>
+      </div>
+      <h2 class="section-title">일정 관리</h2>
+      <div class="card stack">
+        <button class="btn gold" data-share style="width:100%">📤 일정 보내기 (카톡 공유)</button>
+        <p class="small muted" style="margin:0">보낸 링크를 받은 사람이 누르면 같은 일정이 그 폰에도 들어가요. 일정은 각자 폰에 저장되니 고친 뒤에는 다시 보내 주세요.</p>
+        <button class="btn" data-import-rec style="width:100%">✨ 추천 일정 불러오기</button>
+        <p class="small muted" style="margin:0">미리 짜 둔 2박 3일 코스(오타루 하루, 모이와산 기념일 디너 포함)로 채워요. 불러온 뒤 자유롭게 고칠 수 있어요.</p>
+        ${plan.days.some((d) => d.length) ? '<button class="btn small" data-clear style="justify-self:start">일정 전부 지우기</button>' : ''}
+      </div>`;
+  }
+
+  /* ---------------- 장소 고르기 시트 ---------------- */
+  function pickerListHTML() {
+    const q = (state.pickQ || '').trim().toLowerCase();
+    const f = state.pickF || 'all';
+    let list = PLACES.filter((p) => p.cat !== 'transport');
+    if (f === 'food') list = list.filter((p) => p.type === 'food' && p.cat !== 'cafe');
+    else if (f === 'cafe') list = list.filter((p) => p.cat === 'cafe');
+    else if (f === 'sight') list = list.filter((p) => p.type === 'sight');
+    else if (f === 'otaru') list = list.filter((p) => p.area === '오타루');
+    if (q) list = list.filter((p) => `${p.name_ko} ${p.name_ja} ${p.area} ${catOf(p).label} ${p.menu || ''}`.toLowerCase().includes(q));
+    if (state.pos && inHokkaido(state.pos) && f === 'near') list = [...list].sort((a, b) => haversine(state.pos, a) - haversine(state.pos, b));
+    const dayIdx = state.day ?? 0;
+    if (!list.length) return '<p class="muted" style="text-align:center;padding:20px 0">찾는 곳이 없어요</p>';
+    return list.map((p) => {
+      const inDay = plan.days[dayIdx].some((it) => it.place === p.id);
+      return `<div class="pick-row">
+        <span class="pi-emoji" aria-hidden="true">${catOf(p).emoji}</span>
+        <span class="pi-main"><b>${esc(p.name_ko)}</b><span class="small muted">${esc(p.area)} · ${esc(catOf(p).label)}${p.rating ? ` · ★${esc(p.rating)}` : ''}</span></span>
+        <button class="btn small ${inDay ? '' : 'primary'}" data-pick="${esc(p.id)}">${inDay ? '✓ 넣음' : '＋ 넣기'}</button>
+      </div>`;
+    }).join('');
+  }
+  function openPicker() {
+    const dayIdx = state.day ?? 0;
+    const chips = [['all', '전체'], ['food', '🍣 맛집'], ['cafe', '🍰 카페'], ['sight', '⛩ 명소'], ['otaru', '🚃 오타루'], ['near', '📍 가까운 순']]
+      .map(([k, l]) => `<button class="chip" data-pickf="${k}" aria-pressed="${(state.pickF || 'all') === k}">${l}</button>`).join('');
+    openSheet(`<div class="d-head"><div class="cat">📅 ${esc(DAYS[dayIdx].label)} · ${esc(DAYS[dayIdx].dateLabel)}</div><h2 id="sheet-title">어디에 가실래요?</h2></div>
+      <input type="search" class="search" placeholder="이름·메뉴로 찾기 (예: 라멘, 게, 오타루)" value="${esc(state.pickQ || '')}" data-pickq>
+      <div class="filters" style="margin-top:10px">${chips}</div>
+      <div id="pick-list" class="pick-list">${pickerListHTML()}</div>
+      <button class="btn primary" data-close-sheet style="width:100%;margin-top:14px">다 골랐어요</button>`);
+  }
+  function openMemoForm() {
+    const dayIdx = state.day ?? 0;
+    openSheet(`<div class="d-head"><div class="cat">📝 ${esc(DAYS[dayIdx].label)}</div><h2 id="sheet-title">메모 추가</h2></div>
+      <form class="memo-form stack" data-memo-save style="margin-top:14px">
+        <label>할 일 <input name="title" required maxlength="40" placeholder="예: 호텔 체크인, 기념품 쇼핑"></label>
+        <label>시간 (선택) <input name="time" type="time"></label>
+        <label>메모 (선택) <input name="memo" maxlength="80" placeholder="예: 프런트에 짐 맡기기"></label>
+        <button class="btn primary" type="submit">추가하기</button>
+      </form>`);
+    setTimeout(() => $('.memo-form input[name=title]')?.focus(), 50);
   }
 
   /* ---------------- 목록 ---------------- */
@@ -353,7 +518,7 @@
     const cw = closedWarn(p);
     const r = p.route;
     const fromLabel = p.from === 'otaru' ? '오타루역에서 가는 법' : '호텔에서 가는 법';
-    $('#sheet-body').innerHTML = `
+    openSheet(`
       <div class="d-head ${esc(p.type)}">
         <div class="cat">${c.emoji} ${esc(c.label)} · ${esc(p.area || '')}</div>
         <h2 id="sheet-title">${esc(p.name_ko)}</h2>
@@ -362,6 +527,8 @@
         ${cw ? `<div class="tl-meta"><span class="tag warn">⚠ ${esc(cw)}</span></div>` : ''}
       </div>
       <div class="stack" style="margin-top:16px">
+        ${isHotel ? '' : planBoxHTML(p)}
+        ${p.tabelog ? `<a class="btn tabelog" href="${esc(p.tabelog)}" target="_blank" rel="noopener">🍴 타베로그에서 메뉴·사진 보기${p.rating ? ` <span class="score">★ ${esc(p.rating)}</span>` : ''}</a>` : ''}
         ${liveBoxHTML(p)}
         ${r ? `<div class="card">
           <h3 style="font-size:17px;margin-bottom:10px">🏨 ${fromLabel}</h3>
@@ -386,14 +553,34 @@
           <a class="btn" href="#/map?focus=${esc(p.id)}" data-close>🗺 지도에서 보기</a>
           <a class="btn wide" href="${gmapsPlace(p)}" target="_blank" rel="noopener">구글맵에서 리뷰·사진 보기</a>
         </div>
-      </div>`;
+      </div>`);
+  }
+  function planBoxHTML(p) {
+    const days = plannedDays(p.id);
+    return `<div class="card plan-box" id="plan-box" data-id="${esc(p.id)}">
+      <div class="small" style="font-weight:700">📅 내 일정에 넣기 <span class="muted" style="font-weight:400">(한 번 더 누르면 빠져요)</span></div>
+      <div class="btn-row three">${DAYS.map((d, i) => `<button class="btn small ${days.includes(i) ? 'on' : ''}" data-toggle-day="${i}" data-id="${esc(p.id)}" aria-pressed="${days.includes(i)}">${days.includes(i) ? '✓ ' : ''}${esc(d.label)}<br><span class="small">${esc(d.dateLabel.split(' ')[0])}</span></button>`).join('')}</div>
+    </div>`;
+  }
+  function openSheet(html) {
+    $('#sheet-body').innerHTML = html;
     $('#sheet').hidden = false;
     $('#sheet-backdrop').hidden = false;
     $('#sheet').scrollTop = 0;
     document.body.style.overflow = 'hidden';
-    $('#sheet-close').focus();
+  }
+  let toastTimer;
+  function toast(msg) {
+    let t = $('#toast');
+    if (!t) { t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; t.setAttribute('role', 'status'); document.body.appendChild(t); }
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
   }
   function closeSheet() {
+    // 시트에서 일정을 바꿨으면 뒤 화면도 새로 그리기
+    if (state.dirty) { state.dirty = false; rerender(); }
     $('#sheet').hidden = true;
     $('#sheet-backdrop').hidden = true;
     document.body.style.overflow = '';
@@ -438,7 +625,7 @@
         <a class="btn small" href="${gmapsDir(p, 'transit')}" target="_blank" rel="noopener">길찾기</a></div>`);
       markers[p.id] = { m, p };
     }
-    $('#map-chips').innerHTML = [['all', '전체'], ['food', '🍣 맛집'], ['sight', '⛩ 명소'], ['otaru', '🚃 오타루']]
+    $('#map-chips').innerHTML = [['all', '전체'], ['plan', '📅 내 일정'], ['food', '🍣 맛집'], ['sight', '⛩ 명소'], ['otaru', '🚃 오타루']]
       .map(([k, l]) => `<button class="chip" data-mapf="${k}" aria-pressed="${state.mapFilter === k}">${l}</button>`).join('');
     applyMapFilter();
     updateMeMarker();
@@ -446,7 +633,8 @@
   function applyMapFilter() {
     const f = state.mapFilter;
     for (const { m, p } of Object.values(markers)) {
-      const show = p.id === 'hotel' || f === 'all' || (f === 'otaru' ? p.area === '오타루' : p.type === f);
+      const show = p.id === 'hotel' || f === 'all'
+        || (f === 'plan' ? plannedDays(p.id).length > 0 : f === 'otaru' ? p.area === '오타루' : p.type === f);
       if (show) m.addTo(map); else m.remove();
     }
     document.querySelectorAll('[data-mapf]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.mapf === f));
@@ -490,8 +678,9 @@
     const [path, query] = raw.split('?');
     const [tab, arg] = path.split('/');
     const params = new URLSearchParams(query || '');
-    document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
+    document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === (titles[tab] ? tab : 'plan')));
     $('#page-title').textContent = titles[tab] || titles.plan;
+    if (tab === 'import') { $('#map-wrap').hidden = true; view.hidden = false; renderPlan(); showImport(params.get('d')); return; }
     if (tab === 'map') { showMap(params.get('focus')); refreshLive(); return; }
     $('#map-wrap').hidden = true;
     view.hidden = false;
@@ -502,14 +691,83 @@
     refreshLive();
     window.scrollTo(0, 0);
   }
-  window.addEventListener('hashchange', () => { closeSheet(); route(); });
+  window.addEventListener('hashchange', () => { state.dirty = false; closeSheet(); route(); });
+  // 스크롤 위치를 지키면서 현재 화면만 다시 그리기
+  function rerender() {
+    const y = window.scrollY;
+    route();
+    window.scrollTo(0, y);
+    if (map && !$('#map-wrap').hidden) applyMapFilter();
+  }
 
   /* ---------------- 이벤트 위임 ---------------- */
+  const findItem = (uid) => {
+    for (const d of plan.days) { const i = d.findIndex((x) => x.uid === uid); if (i >= 0) return [d, i]; }
+    return [null, -1];
+  };
   document.addEventListener('click', (e) => {
-    const t = e.target.closest('[data-open],[data-taxi],[data-day],[data-cat],[data-sort],[data-geo],[data-mapf],[data-phrase],[data-close]');
-    if (!t) return;
+    const t = e.target.closest('[data-open],[data-taxi],[data-day],[data-cat],[data-sort],[data-geo],[data-mapf],[data-phrase],[data-close],'
+      + '[data-toggle-day],[data-pick],[data-pickf],[data-picker],[data-memo-form],[data-edit],[data-sort-time],[data-move],[data-del],'
+      + '[data-share],[data-import-rec],[data-import-accept],[data-clear],[data-close-sheet]');
+    if (!t || t.disabled) return;
     if (t.dataset.open) { openPlace(t.dataset.open); return; }
     if (t.dataset.taxi) { showTaxi(t.dataset.taxi); return; }
+    if (t.dataset.toggleDay != null) {
+      togglePlace(t.dataset.id, Number(t.dataset.toggleDay));
+      $('#plan-box').outerHTML = planBoxHTML(byId[t.dataset.id]);
+      state.dirty = true;
+      return;
+    }
+    if (t.dataset.pick) {
+      togglePlace(t.dataset.pick, state.day ?? 0);
+      $('#pick-list').innerHTML = pickerListHTML();
+      state.dirty = true;
+      return;
+    }
+    if (t.dataset.pickf) {
+      if (t.dataset.pickf === 'near' && !(state.pos && inHokkaido(state.pos))) { startWatch(); toast('삿포로에서 위치를 켜면 가까운 순으로 보여요'); return; }
+      state.pickF = t.dataset.pickf;
+      document.querySelectorAll('[data-pickf]').forEach((b) => b.setAttribute('aria-pressed', b === t));
+      $('#pick-list').innerHTML = pickerListHTML();
+      return;
+    }
+    if (t.hasAttribute('data-picker')) { openPicker(); return; }
+    if (t.hasAttribute('data-memo-form')) { openMemoForm(); return; }
+    if (t.hasAttribute('data-edit')) { state.editing = !state.editing; rerender(); return; }
+    if (t.hasAttribute('data-sort-time')) {
+      // 시간 없는 항목은 원래 순서대로 맨 뒤에
+      const day = plan.days[state.day ?? 0];
+      day.sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+      savePlan(); rerender(); return;
+    }
+    if (t.dataset.move) {
+      const [d, i] = findItem(t.dataset.move);
+      const j = i + Number(t.dataset.dir);
+      if (d && j >= 0 && j < d.length) { [d[i], d[j]] = [d[j], d[i]]; savePlan(); rerender(); }
+      return;
+    }
+    if (t.dataset.del) {
+      const [d, i] = findItem(t.dataset.del);
+      if (d) { d.splice(i, 1); savePlan(); rerender(); toast('일정에서 지웠어요'); }
+      return;
+    }
+    if (t.hasAttribute('data-share')) { sharePlan(); return; }
+    if (t.hasAttribute('data-import-rec')) {
+      const has = plan.days.some((d) => d.length);
+      if (has && !confirm('지금 일정이 추천 일정으로 바뀌어요. 괜찮으세요?')) return;
+      plan.days = recommendedPlan(); savePlan(); state.day = 0; rerender(); toast('추천 일정을 불러왔어요');
+      return;
+    }
+    if (t.hasAttribute('data-import-accept')) {
+      if (state.pendingImport) { plan.days = state.pendingImport; state.pendingImport = null; savePlan(); }
+      state.dirty = true; closeSheet(); toast('받은 일정을 저장했어요 ✓');
+      return;
+    }
+    if (t.hasAttribute('data-clear')) {
+      if (confirm('3일 일정을 모두 지울까요?')) { plan.days = DAYS.map(() => []); savePlan(); state.editing = false; rerender(); }
+      return;
+    }
+    if (t.hasAttribute('data-close-sheet')) { closeSheet(); return; }
     if (t.dataset.day != null) { state.day = Number(t.dataset.day); renderPlan(state.day); refreshLive(); return; }
     if (t.dataset.cat) { state[t.dataset.key] = t.dataset.cat; renderList(t.dataset.key === 'foodCat' ? 'food' : 'sight'); refreshLive(); return; }
     if (t.hasAttribute('data-sort')) {
@@ -522,7 +780,21 @@
     if (t.dataset.phrase != null) { showPhrase(Number(t.dataset.phrase)); return; }
     if (t.hasAttribute('data-close')) closeSheet();
   });
+  document.addEventListener('input', (e) => {
+    if (e.target.matches('[data-pickq]')) { state.pickQ = e.target.value; $('#pick-list').innerHTML = pickerListHTML(); }
+  });
+  document.addEventListener('submit', (e) => {
+    if (!e.target.matches('[data-memo-save]')) return;
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const title = String(f.get('title') || '').trim();
+    if (!title) return;
+    plan.days[state.day ?? 0].push({ uid: newUid(), title, time: String(f.get('time') || ''), memo: String(f.get('memo') || '').trim() });
+    savePlan(); state.dirty = true; closeSheet(); toast('메모를 추가했어요');
+  });
   document.addEventListener('change', (e) => {
+    const tm = e.target.closest('[data-time]');
+    if (tm) { const [d, i] = findItem(tm.dataset.time); if (d) { d[i].time = tm.value; savePlan(); } return; }
     const c = e.target.closest('[data-check]');
     if (!c) return;
     const checks = store.get('checks', {});
