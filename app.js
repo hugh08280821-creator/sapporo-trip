@@ -4,7 +4,7 @@
 
   const $ = (s, el = document) => el.querySelector(s);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  // 카페·디저트는 맛집과 따로 「카페」 탭에서 보여주기
+  // 카페·디저트는 맛집과 따로 「둘러보기 › 카페」에서 보여주기
   PLACES.forEach((p) => { if (CATS[p.cat] && CATS[p.cat].type === 'cafe') p.type = 'cafe'; });
   const byId = Object.fromEntries([HOTEL, ...PLACES].map((p) => [p.id, p]));
 
@@ -334,7 +334,7 @@
     const empty = `<div class="empty card">
         <div style="font-size:40px">🗓</div>
         <h3>${esc(DAYS[dayIdx].label)} 일정이 비어 있어요</h3>
-        <p class="muted">「맛집」·「명소」 탭에서 가고 싶은 곳을 골라 <b>📅 일정에 넣기</b>를 누르거나, 아래 버튼으로 바로 추가하세요.</p>
+        <p class="muted">「둘러보기」 탭에서 가고 싶은 곳을 골라 <b>📅 일정에 넣기</b>를 누르거나, 아래 버튼으로 바로 추가하세요.</p>
       </div>`;
 
     view.innerHTML = `<div id="near-slot">${nearBannerHTML()}</div>${hero}
@@ -417,7 +417,11 @@
     const chips = [['all', '전체'], ...cats.map(([k, c]) => [k, `${c.emoji} ${c.label}`]), ['otaru', '🚃 오타루']]
       .map(([k, l]) => `<button class="chip" aria-pressed="${sel === k}" data-cat="${k}" data-key="${key}">${esc(l)}</button>`).join('');
 
-    view.innerHTML = `<div id="near-slot">${nearBannerHTML()}</div>
+    const segs = [['food', '🍣', '맛집'], ['cafe', '☕', '카페'], ['sight', '⛩', '명소']]
+      .map(([t, e, l]) => `<a class="seg" href="#/places/${t}" aria-current="${t === type ? 'page' : 'false'}"><span aria-hidden="true">${e}</span>${l}<em>${PLACES.filter((p) => p.type === t).length}</em></a>`).join('');
+
+    view.innerHTML = `<nav class="segbar" aria-label="종류">${segs}</nav>
+      <div id="near-slot">${nearBannerHTML()}</div>
       <div class="filters">${chips}</div>
       <div class="sortbar"><span>${list.length}곳 · 🏨 = 호텔에서 걸리는 시간</span>
         <button data-sort>${state.sortNear && canSort ? '추천순으로' : '📍 가까운 순'}</button></div>
@@ -687,11 +691,14 @@
 
   /* ---------------- 라우팅 ---------------- */
   const view = $('#view');
-  const titles = { plan: '삿포로 2박 3일', map: '지도', food: '맛집', cafe: '카페', sights: '가볼 만한 곳', diary: '여행 앨범', info: '여행 정보' };
+  const titles = { plan: '삿포로 2박 3일', map: '지도', places: '둘러보기', diary: '여행 앨범', info: '여행 정보' };
+  // 예전 주소(#/food 등)도 둘러보기 탭으로 열기
+  const PLACE_TYPES = { food: 'food', cafe: 'cafe', sights: 'sight', sight: 'sight' };
   function route() {
     const raw = location.hash.replace(/^#\/?/, '') || 'plan';
     const [path, query] = raw.split('?');
-    const [tab, arg] = path.split('/');
+    let [tab, arg] = path.split('/');
+    if (PLACE_TYPES[tab]) { arg = PLACE_TYPES[tab]; tab = 'places'; }
     const params = new URLSearchParams(query || '');
     document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === (titles[tab] ? tab : 'plan')));
     $('#page-title').textContent = titles[tab] || titles.plan;
@@ -700,10 +707,10 @@
     $('#map-wrap').hidden = true;
     view.hidden = false;
     if (tab === 'diary') { view.innerHTML = ''; if (window.DIARY) window.DIARY.show(); window.scrollTo(0, 0); return; }
-    if (tab === 'food') renderList('food');
-    else if (tab === 'cafe') renderList('cafe');
-    else if (tab === 'sights') renderList('sight');
-    else if (tab === 'info') renderInfo();
+    if (tab === 'places') {
+      state.placesType = PLACE_TYPES[arg] || state.placesType || 'food';
+      renderList(state.placesType);
+    } else if (tab === 'info') renderInfo();
     else renderPlan(arg != null ? Number(arg) : null);
     refreshLive();
     window.scrollTo(0, 0);
@@ -840,6 +847,10 @@
   window.APP = { esc, toast, openSheet, closeSheet, askConfirm, byId, haversine };
 
   /* ---------------- 시작 ---------------- */
+  // 상단 고정 영역(둘러보기 전환 바, 지도)이 헤더 바로 아래에 붙도록 헤더 높이를 기억
+  const setHeaderH = () => document.documentElement.style.setProperty('--header-h', `${$('.top').offsetHeight}px`);
+  setHeaderH();
+  window.addEventListener('resize', setHeaderH);
   const dd = dday();
   $('#dday').textContent = dd > 0 ? `결혼기념일 여행 · D-${dd}` : currentDayIndex() >= 0 ? `결혼기념일 여행 · ${DAYS[currentDayIndex()].label}` : '결혼기념일 여행';
   route();
