@@ -580,7 +580,20 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
   }
+  // 브라우저 기본 확인창은 카톡 인앱 브라우저 등에서 뜨지 않고 '취소'로 처리되므로 앱 안에서 직접 묻기
+  let confirmResolve = null;
+  function askConfirm(message, okLabel = '확인', danger = false) {
+    if (confirmResolve) confirmResolve(false);
+    return new Promise((resolve) => {
+      openSheet(`<div class="confirm">
+        <h2 id="sheet-title" class="confirm-msg">${esc(message)}</h2>
+        <div class="btn-row"><button class="btn ${danger ? 'danger-fill' : 'primary'}" data-confirm="1">${esc(okLabel)}</button><button class="btn" data-confirm="0">취소</button></div>
+      </div>`);
+      confirmResolve = resolve;
+    });
+  }
   function closeSheet() {
+    if (confirmResolve) { const r = confirmResolve; confirmResolve = null; r(false); }
     // 시트에서 일정을 바꿨으면 뒤 화면도 새로 그리기
     if (state.dirty) { state.dirty = false; rerender(); }
     $('#sheet').hidden = true;
@@ -674,7 +687,7 @@
 
   /* ---------------- 라우팅 ---------------- */
   const view = $('#view');
-  const titles = { plan: '삿포로 2박 3일', map: '지도', food: '맛집', cafe: '카페', sights: '가볼 만한 곳', diary: '여행기', info: '여행 정보' };
+  const titles = { plan: '삿포로 2박 3일', map: '지도', food: '맛집', cafe: '카페', sights: '가볼 만한 곳', diary: '여행 앨범', info: '여행 정보' };
   function route() {
     const raw = location.hash.replace(/^#\/?/, '') || 'plan';
     const [path, query] = raw.split('?');
@@ -710,7 +723,7 @@
     return [null, -1];
   };
   document.addEventListener('click', (e) => {
-    const t = e.target.closest('[data-open],[data-taxi],[data-day],[data-cat],[data-sort],[data-geo],[data-mapf],[data-phrase],[data-close],'
+    const t = e.target.closest('[data-open],[data-taxi],[data-day],[data-cat],[data-sort],[data-geo],[data-mapf],[data-phrase],[data-close],[data-confirm],'
       + '[data-toggle-day],[data-pick],[data-pickf],[data-picker],[data-memo-form],[data-edit],[data-sort-time],[data-move],[data-del],'
       + '[data-share],[data-import-rec],[data-import-accept],[data-clear],[data-close-sheet]');
     if (!t || t.disabled) return;
@@ -758,8 +771,17 @@
     if (t.hasAttribute('data-share')) { sharePlan(); return; }
     if (t.hasAttribute('data-import-rec')) {
       const has = plan.days.some((d) => d.length);
-      if (has && !confirm('지금 일정이 추천 일정으로 바뀌어요. 괜찮으세요?')) return;
-      plan.days = recommendedPlan(); savePlan(); state.day = 0; rerender(); toast('추천 일정을 불러왔어요');
+      (has ? askConfirm('지금 일정이 추천 일정으로 바뀌어요. 괜찮으세요?', '바꾸기') : Promise.resolve(true)).then((ok) => {
+        if (!ok) return;
+        plan.days = recommendedPlan(); savePlan(); state.day = 0; rerender(); toast('추천 일정을 불러왔어요');
+      });
+      return;
+    }
+    if (t.dataset.confirm != null) {
+      const resolve = confirmResolve;
+      confirmResolve = null;
+      closeSheet();
+      if (resolve) resolve(t.dataset.confirm === '1');
       return;
     }
     if (t.hasAttribute('data-import-accept')) {
@@ -768,7 +790,9 @@
       return;
     }
     if (t.hasAttribute('data-clear')) {
-      if (confirm('3일 일정을 모두 지울까요?')) { plan.days = DAYS.map(() => []); savePlan(); state.editing = false; rerender(); }
+      askConfirm('3일 일정을 모두 지울까요?', '모두 지우기', true).then((ok) => {
+        if (ok) { plan.days = DAYS.map(() => []); savePlan(); state.editing = false; rerender(); }
+      });
       return;
     }
     if (t.hasAttribute('data-close-sheet')) { closeSheet(); return; }
@@ -813,7 +837,7 @@
   $('#sheet-backdrop').addEventListener('click', closeSheet);
 
   // 여행기(diary.js)에서 쓰는 공용 도구
-  window.APP = { esc, toast, openSheet, closeSheet, byId, haversine, planDay: (i) => plan.days[i] || [] };
+  window.APP = { esc, toast, openSheet, closeSheet, askConfirm, byId, haversine };
 
   /* ---------------- 시작 ---------------- */
   const dd = dday();

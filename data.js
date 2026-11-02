@@ -4,7 +4,6 @@ const TRIP = {
   subtitle: '2026년 11월 22일(일) ~ 24일(화) · 2박 3일',
   start: '2026-11-22',
   checked: '2026년 11월 2일',
-  diaryApi: 'https://sapporo-diary.hughsapporo.workers.dev', // 여행기 서버(Cloudflare Worker) 주소
 };
 
 const HOTEL = {
