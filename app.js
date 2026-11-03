@@ -148,6 +148,53 @@
     if (nb) nb.innerHTML = nearBannerHTML();
   }
 
+  // 위치를 한 번만 받기 (켜져 있고 1분 안의 위치면 그대로 사용)
+  function getPosOnce() {
+    if (state.pos && Date.now() - state.pos.ts < 60000) return Promise.resolve(state.pos);
+    if (!('geolocation' in navigator)) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (p) => {
+          state.pos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, ts: p.timestamp || Date.now() };
+          state.geoError = null;
+          store.set('geo', true);
+          onPosition();
+          resolve(state.pos);
+        },
+        (e) => {
+          state.geoError = e.code === 1
+            ? '위치 권한이 꺼져 있어요. 휴대폰 설정 → 브라우저(Safari/Chrome) → 위치를 "허용"으로 바꿔 주세요.'
+            : '위치를 찾지 못했어요. 잠시 후 다시 시도해 주세요.';
+          resolve(null);
+        },
+        { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 }
+      );
+    });
+  }
+  // 지금 위치를 지도 링크로 카톡 등에 보내기 (가족 안심용)
+  async function sendMyLocation() {
+    toast('위치를 찾는 중이에요…');
+    const pos = await getPosOnce();
+    if (!pos) { alertSheet(state.geoError || '위치를 찾지 못했어요.'); return; }
+    const url = `https://maps.google.com/?q=${pos.lat.toFixed(6)},${pos.lng.toFixed(6)}`;
+    let near = '';
+    if (inHokkaido(pos)) {
+      let best = null, bd = Infinity;
+      for (const p of [HOTEL, ...PLACES]) { const d = haversine(pos, p); if (d < bd) { bd = d; best = p; } }
+      if (best && bd < 400) near = ` (${best.name_ko} 근처)`;
+    }
+    const text = `📍 지금 여기 있어요${near} · ${nowHM()}`;
+    if (navigator.share) {
+      try { await navigator.share({ title: '내 위치', text, url }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    try { await navigator.clipboard.writeText(`${text}\n${url}`); toast('위치 링크를 복사했어요. 카톡에 붙여넣기 하세요'); }
+    catch { alertSheet(`아래 링크를 길게 눌러 복사해서 보내 주세요.\n${url}`); }
+  }
+  function alertSheet(message) {
+    openSheet(`<div class="confirm"><h2 id="sheet-title" class="confirm-msg" style="white-space:pre-line;word-break:break-all">${esc(message)}</h2>
+      <button class="btn primary" data-close-sheet style="width:100%">확인</button></div>`);
+  }
+
   pill.addEventListener('click', () => {
     if (state.geoError && !state.pos) { alert(state.geoError); state.geoError = null; }
     startWatch();
@@ -324,6 +371,7 @@
           ${nextPlace ? `<a class="btn gold" href="${gmapsDir(nextPlace, 'transit')}" target="_blank" rel="noopener">🧭 다음 일정 길찾기</a>` : ''}
           <a class="btn ${nextPlace ? '' : 'gold'}" href="${gmapsDir(HOTEL, 'transit')}" target="_blank" rel="noopener">🏨 호텔로 돌아가기</a>
           <button class="btn" data-taxi="${nextPlace ? esc(nextPlace.id) : 'hotel'}">🚕 택시에 보여주기</button>
+          <button class="btn" data-send-loc>📤 내 위치 보내기</button>
         </div></div>`;
     } else if (dd > 0) {
       hero = `<div class="hero"><h2>여행까지 D-${dd}</h2><p>${esc(TRIP.subtitle)}</p></div>`;
@@ -758,7 +806,8 @@
       ${sec('phrase', '🗣 일본어 한마디', `<p class="small muted" style="margin:0 0 8px">문장을 누르면 크게 보여요.</p>
       <div class="card" style="padding:4px 16px">${INFO.phrases.map((p, i) => `<div class="phrase" data-phrase="${i}" role="button" tabindex="0">
         <span class="ko">${esc(p.ko)}</span><span class="ja">${esc(p.ja)}</span><span class="rd">${esc(p.rd)}</span></div>`).join('')}</div>`)}
-      ${sec('sos', '🚨 긴급 연락처', `<div class="card"><dl class="facts">${INFO.emergency.map((e) => `<dt>${esc(e.label)}</dt><dd>${e.tel ? `<a href="tel:${esc(e.tel)}">${esc(e.value)}</a>` : esc(e.value)}</dd>`).join('')}</dl></div>`)}
+      ${sec('sos', '🚨 긴급 연락처', `<button class="btn primary" data-send-loc style="width:100%;margin-bottom:10px">📤 지금 내 위치를 가족에게 보내기</button>
+      <div class="card"><dl class="facts">${INFO.emergency.map((e) => `<dt>${esc(e.label)}</dt><dd>${e.tel ? `<a href="tel:${esc(e.tel)}">${esc(e.value)}</a>` : esc(e.value)}</dd>`).join('')}</dl></div>`)}
       <p class="small muted" style="margin-top:20px">영업시간·휴무일은 ${esc(TRIP.checked)} 기준으로 조사한 정보예요. 출발 전 구글맵에서 한 번 더 확인해 주세요.</p>`;
     refreshFx();
     refreshWx();
@@ -1015,8 +1064,9 @@
     const t = e.target.closest('[data-open],[data-taxi],[data-day],[data-cat],[data-sort],[data-geo],[data-mapf],[data-phrase],[data-close],[data-confirm],'
       + '[data-toggle-day],[data-pick],[data-pickf],[data-picker],[data-memo-form],[data-edit],[data-sort-time],[data-move],[data-del],'
       + '[data-share],[data-import-rec],[data-import-accept],[data-clear],[data-close-sheet],'
-      + '[data-jump],[data-jump-later],[data-taxi-text],[data-fx-swap],[data-fx-quick],[data-sec-all],[data-shop-del],[data-shop-rec],[data-shop-hide]');
+      + '[data-send-loc],[data-jump],[data-jump-later],[data-taxi-text],[data-fx-swap],[data-fx-quick],[data-sec-all],[data-shop-del],[data-shop-rec],[data-shop-hide]');
     if (!t || t.disabled) return;
+    if (t.hasAttribute('data-send-loc')) { sendMyLocation(); return; }
     if (t.dataset.jump) { jumpToSection(t.dataset.jump); return; }
     if (t.dataset.jumpLater) { state.jumpTo = t.dataset.jumpLater; return; } // #/info로 이동한 뒤 그 섹션을 열기
     if (t.dataset.taxiText) { showTaxiText(t.dataset.taxiText); return; }
@@ -1226,7 +1276,22 @@
     });
   }
 
+  // 글씨 크게 보기: 본문과 상세 화면만 키우고(지도는 그대로) 설정은 휴대폰에 기억
+  const txtBtn = $('#txt-btn');
+  function applyBigText(on) {
+    document.documentElement.classList.toggle('big', on);
+    txtBtn.setAttribute('aria-pressed', on);
+    txtBtn.setAttribute('aria-label', on ? '글씨 원래대로' : '글씨 크게 보기');
+  }
+  txtBtn.addEventListener('click', () => {
+    const on = !document.documentElement.classList.contains('big');
+    store.set('bigText', on);
+    applyBigText(on);
+    toast(on ? '글씨를 크게 했어요' : '글씨를 원래대로 했어요');
+  });
+
   /* ---------------- 시작 ---------------- */
+  applyBigText(store.get('bigText', false));
   inAppBanner();
   // 상단 고정 영역(둘러보기 전환 바, 지도)이 헤더 바로 아래에 붙도록 헤더 높이를 기억
   const setHeaderH = () => document.documentElement.style.setProperty('--header-h', `${$('.top').offsetHeight}px`);

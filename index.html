@@ -23,9 +23,12 @@
       <p class="eyebrow" id="dday">결혼기념일 여행</p>
       <h1 id="page-title">삿포로 2박 3일</h1>
     </div>
-    <button class="loc-pill" id="loc-pill" type="button" aria-live="polite">
-      <span class="dot"></span><span class="loc-text">내 위치 켜기</span>
-    </button>
+    <div class="top-actions">
+      <button class="txt-btn" id="txt-btn" type="button" aria-pressed="false" aria-label="글씨 크게 보기">가<span>+</span></button>
+      <button class="loc-pill" id="loc-pill" type="button" aria-live="polite">
+        <span class="dot"></span><span class="loc-text">내 위치 켜기</span>
+      </button>
+    </div>
   </div>
 </header>
 
@@ -35,6 +38,7 @@
   <div id="map"></div>
   <div class="map-chips" id="map-chips"></div>
   <div class="map-actions">
+    <button type="button" class="fab" data-send-loc aria-label="내 위치 보내기">📤</button>
     <button type="button" class="fab" id="btn-locate" aria-label="내 위치로 이동">◎</button>
   </div>
 </div>

@@ -178,7 +178,7 @@ main { max-width: 720px; margin: 0 auto; padding: 16px 16px 24px; outline: none;
 /* place list */
 .plist { display: grid; gap: 12px; }
 .pcard {
-  display: grid; grid-template-columns: 48px 1fr; gap: 12px; align-items: start;
+  display: grid; grid-template-columns: 48px minmax(0, 1fr); min-width: 0; gap: 12px; align-items: start;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 14px; box-shadow: var(--shadow); cursor: pointer; text-align: left; width: 100%;
 }
@@ -383,7 +383,7 @@ div.pi-row { cursor: default; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 @media (min-width: 560px) {
-  .plist { grid-template-columns: 1fr 1fr; }
+  .plist { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* ---------- 여행 앨범 ---------- */
@@ -514,3 +514,25 @@ label.btn input[hidden] { display: none; }
 .wx-table thead th { font-size: 13px; color: var(--ink-3); }
 .wx-table tbody th { text-align: left; font-size: 13px; font-weight: 700; white-space: nowrap; }
 .wx-table small { color: var(--ink-3); }
+
+/* ---------- 헤더 버튼 · 글씨 크게 ---------- */
+.top-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.txt-btn {
+  width: 44px; height: 38px; border-radius: 999px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.08);
+  color: #fff; font-weight: 800; font-size: 17px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+}
+.txt-btn span { font-size: 12px; margin-left: 1px; }
+.txt-btn[aria-pressed="true"] { background: #e9cf9c; color: #14213a; border-color: #e9cf9c; }
+/* 본문만 비율로 키우기 (지도 좌표가 틀어지지 않도록 지도는 제외) */
+html.big #view, html.big .sheet-body, html.big .inapp { zoom: 1.15; }
+html.big .segbar { top: calc(var(--header-h, 64px) / 1.15); }
+html.big .tabbar a { font-size: 14px; }
+html.big .tabbar .ti { font-size: 24px; }
+html.big .toast { font-size: 17px; }
+.map-actions .fab:first-child { font-size: 22px; }
+@media (max-width: 380px) { .loc-pill { max-width: 40vw; } }
+
+/* 줄임(line-clamp) 문단이 카드 폭을 밀어내지 않도록 */
+.pcard > span { min-width: 0; display: block; }
+.tag { max-width: 100%; }
+.pcard .tag, .pi .tag { white-space: normal; }
