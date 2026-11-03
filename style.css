@@ -497,3 +497,20 @@ label.btn input[hidden] { display: none; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .pin-note:not(.empty-note) { background: #1b2a49; border-color: #2f4778; }
 }
+
+/* ---------- 날씨 ---------- */
+.wx-card { margin-bottom: 12px; padding: 10px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.wx-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.wx-chip { display: grid; justify-items: center; gap: 1px; text-align: center; padding: 4px 2px; font-size: 15px; font-variant-numeric: tabular-nums; }
+.wx-name { font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.wx-emo { font-size: 26px; line-height: 1.2; }
+.wx-sub { font-size: 12px; color: var(--ink-3); }
+.wx-tip { margin: 8px 0 0; font-size: 14px; color: var(--ink-2); text-align: center; }
+.wx-wait { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--ink-2); }
+.wx-wait > span:first-child { font-size: 20px; }
+.wx-now { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 15px; }
+.wx-table { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; }
+.wx-table th, .wx-table td { padding: 8px 4px; text-align: center; border-bottom: 1px solid var(--line); }
+.wx-table thead th { font-size: 13px; color: var(--ink-3); }
+.wx-table tbody th { text-align: left; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.wx-table small { color: var(--ink-3); }

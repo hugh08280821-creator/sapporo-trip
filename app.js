@@ -356,6 +356,7 @@
         ${day.length ? `<button class="btn small" data-edit>${editing ? '✓ 완료' : '✏️ 편집'}</button>` : ''}
         ${editing && day.length > 1 ? '<button class="btn small" data-sort-time>⏱ 시간순</button>' : ''}
       </div>
+      <div data-wx-day="${dayIdx}">${wxDayHTML(dayIdx)}</div>
       ${pinnedNoteHTML(dayIdx)}
       ${day.length ? `<ol class="plan-list">${list}</ol>` : empty}
       <div class="btn-row" style="margin-top:14px">
@@ -370,6 +371,7 @@
         <p class="small muted" style="margin:0">미리 짜 둔 2박 3일 코스(오타루 하루, 모이와산 기념일 디너 포함)로 채워요. 불러온 뒤 자유롭게 고칠 수 있어요.</p>
         ${plan.days.some((d) => d.length) ? '<button class="btn small" data-clear style="justify-self:start">일정 전부 지우기</button>' : ''}
       </div>`;
+    refreshWx();
   }
 
   /* ---------------- 장소 고르기 시트 ---------------- */
@@ -543,6 +545,109 @@
     return '';
   }
 
+  /* ---------------- 날씨 (Open-Meteo, 키 없이 무료 · 최대 16일 예보) ---------------- */
+  const WX_SPOTS = [
+    { key: 'sapporo', name: '삿포로', lat: 43.0618, lng: 141.3545 },
+    { key: 'otaru', name: '오타루', lat: 43.1907, lng: 140.9947 },
+    { key: 'biei', name: '비에이', lat: 43.5883, lng: 142.4669 },
+  ];
+  let wx = store.get('wx', null); // { at, spots: { key: { now: {t, code}, days: { 'YYYY-MM-DD': {code, hi, lo, pop, snow} } } } }
+  function wxLabel(code) {
+    if (code === 0) return ['☀️', '맑음'];
+    if (code <= 2) return ['🌤', '구름 조금'];
+    if (code === 3) return ['☁️', '흐림'];
+    if (code === 45 || code === 48) return ['🌫', '안개'];
+    if (code >= 51 && code <= 57) return ['🌦', '이슬비'];
+    if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return ['🌧', '비'];
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return ['🌨', '눈'];
+    if (code >= 95) return ['⛈', '뇌우'];
+    return ['🌡', ''];
+  }
+  const isSnowy = (d) => d.snow > 0 || (d.code >= 71 && d.code <= 77) || d.code === 85 || d.code === 86;
+  // 예보가 나오는 날: 출발일에서 15일 전
+  const forecastFrom = (date) => {
+    const d = new Date(`${date}T00:00:00+09:00`);
+    d.setDate(d.getDate() - 15);
+    return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+  };
+  async function loadWx() {
+    if (wx && Date.now() - wx.at < 2 * 3600 * 1000) return false;
+    const u = new URL('https://api.open-meteo.com/v1/forecast');
+    u.searchParams.set('latitude', WX_SPOTS.map((s) => s.lat).join(','));
+    u.searchParams.set('longitude', WX_SPOTS.map((s) => s.lng).join(','));
+    u.searchParams.set('daily', 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,snowfall_sum');
+    u.searchParams.set('current', 'temperature_2m,weather_code');
+    u.searchParams.set('timezone', 'Asia/Tokyo');
+    u.searchParams.set('forecast_days', '16');
+    try {
+      const arr = await (await fetch(u)).json();
+      if (!Array.isArray(arr) || arr.length !== WX_SPOTS.length) return false;
+      const spots = {};
+      WX_SPOTS.forEach((s, i) => {
+        const d = arr[i].daily;
+        const days = {};
+        d.time.forEach((date, j) => {
+          days[date] = { code: d.weather_code[j], hi: d.temperature_2m_max[j], lo: d.temperature_2m_min[j], pop: d.precipitation_probability_max[j], snow: d.snowfall_sum[j] };
+        });
+        spots[s.key] = { now: { t: arr[i].current.temperature_2m, code: arr[i].current.weather_code }, days };
+      });
+      wx = { at: Date.now(), spots };
+      store.set('wx', wx);
+      return true;
+    } catch { return false; } // 오프라인이면 마지막에 받은 예보를 그대로 사용
+  }
+  function wxSpotChip(spot, d) {
+    const [emo, txt] = wxLabel(d.code);
+    // 비·눈 확률이 30% 이상이면 확률을, 아니면 하늘 상태를 보여줌
+    const sub = d.pop != null && d.pop >= 30 ? `${isSnowy(d) ? '눈' : '비'} ${d.pop}%` : txt;
+    return `<div class="wx-chip"><span class="wx-name">${spot.name}</span><span class="wx-emo" aria-hidden="true">${emo}</span>
+      <span><b>${Math.round(d.hi)}°</b> / ${Math.round(d.lo)}°</span><span class="wx-sub">${sub}</span></div>`;
+  }
+  // 일정 탭: 고른 날의 세 도시 날씨
+  function wxDayHTML(dayIdx) {
+    const date = DAYS[dayIdx].date;
+    const have = wx && WX_SPOTS.every((s) => wx.spots[s.key] && wx.spots[s.key].days[date]);
+    if (have) {
+      const cold = WX_SPOTS.some((s) => wx.spots[s.key].days[date].lo <= 0);
+      const snowy = WX_SPOTS.some((s) => isSnowy(wx.spots[s.key].days[date]));
+      return `<div class="wx-card">
+        <div class="wx-row">${WX_SPOTS.map((s) => wxSpotChip(s, wx.spots[s.key].days[date])).join('')}</div>
+        ${snowy ? '<p class="wx-tip">❄️ 눈 소식이 있어요. 미끄럼 방지 신발을 신으세요.</p>' : cold ? '<p class="wx-tip">🧣 영하로 내려가요. 모자·장갑을 챙기세요.</p>' : ''}
+      </div>`;
+    }
+    return `<div class="wx-card wx-wait"><span aria-hidden="true">🌡</span>
+      <span>예보는 <b>${forecastFrom(date)}쯤</b>부터 나와요. 평년엔 낮 3~7℃, 밤 0℃ 안팎이고 눈발이 날리기도 해요.</span></div>`;
+  }
+  // 정보 탭: 지금 날씨 + 여행 3일 예보표
+  function wxTableHTML() {
+    const now = wx ? WX_SPOTS.map((s) => {
+      const n = wx.spots[s.key] && wx.spots[s.key].now;
+      return n ? `<span class="wx-now-item">${s.name} ${wxLabel(n.code)[0]} <b>${Math.round(n.t)}°</b></span>` : '';
+    }).join('') : '';
+    const rows = DAYS.map((d) => {
+      const cells = WX_SPOTS.map((s) => {
+        const x = wx && wx.spots[s.key] && wx.spots[s.key].days[d.date];
+        if (!x) return '<td class="muted">–</td>';
+        return `<td><span aria-hidden="true">${wxLabel(x.code)[0]}</span> <b>${Math.round(x.hi)}°</b>/${Math.round(x.lo)}°${x.pop >= 30 ? `<br><small>${isSnowy(x) ? '눈' : '비'} ${x.pop}%</small>` : ''}</td>`;
+      }).join('');
+      return `<tr><th>${esc(d.dateLabel)}</th>${cells}</tr>`;
+    }).join('');
+    const any = wx && DAYS.some((d) => wx.spots.sapporo && wx.spots.sapporo.days[d.date]);
+    return `<div class="card stack">
+      ${now ? `<div class="wx-now"><span class="small muted">지금</span>${now}</div>` : ''}
+      <table class="wx-table"><thead><tr><th></th>${WX_SPOTS.map((s) => `<th>${s.name}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>
+      <p class="small muted" style="margin:0">${any ? '최고/최저 기온 · 비·눈 확률 30% 이상만 표시해요.' : `여행 날짜 예보는 ${forecastFrom(DAYS[0].date)}쯤부터 채워져요.`} ${wx ? `${new Date(wx.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })} 업데이트` : ''}</p>
+    </div>`;
+  }
+  // 예보를 받아 오면 화면에 있는 날씨 칸만 바꾸기
+  async function refreshWx() {
+    if (!(await loadWx())) return;
+    const day = $('[data-wx-day]');
+    if (day) day.innerHTML = wxDayHTML(Number(day.dataset.wxDay));
+    const table = $('[data-wx-table]');
+    if (table) table.innerHTML = wxTableHTML();
+  }
+
   /* ---------------- 환율 계산기 ---------------- */
   const FX_FALLBACK = { rate: 8.51, date: '2026-11-03' }; // 1엔 = ?원 (불러오기 실패 시)
   let fx = store.get('fx', FX_FALLBACK);
@@ -611,7 +716,7 @@
     const checks = store.get('checks', {});
     const packed = INFO.packing.filter((_, i) => checks[i]).length;
     const bought = shop.filter((x) => x.done).length;
-    const jumps = [['fx', '💴 환율'], ['shop', '🛍 쇼핑'], ['notes', '🔒 내 메모'], ['hotel', '🏨 호텔'], ['reserve', '📞 예약'], ['airport', '✈️ 공항'], ['weather', '🧥 준비물'], ['phrase', '🗣 일본어'], ['sos', '🚨 긴급']]
+    const jumps = [['fx', '💴 환율'], ['weather', '🌤 날씨'], ['shop', '🛍 쇼핑'], ['notes', '🔒 내 메모'], ['hotel', '🏨 호텔'], ['reserve', '📞 예약'], ['airport', '✈️ 공항'], ['phrase', '🗣 일본어'], ['sos', '🚨 긴급']]
       .map(([k, l]) => `<button class="chip" data-jump="${k}">${l}</button>`).join('');
     const allOpen = ['fx', 'shop', 'notes', 'hotel', 'reserve', 'airport', 'airport-back', 'weather', 'tips', 'phrase', 'sos'].every(infoOpen);
     const noteCount = Object.keys(notes).filter((k) => noteVal(k)).length;
@@ -644,7 +749,8 @@
       }).join('')}</div>`, `${INFO.reservations.length}곳`)}
       ${sec('airport', '✈️ 공항 → 호텔 (도착일)', `<div class="stack">${AIRPORT.to.map(routeOption).join('')}</div>`)}
       ${sec('airport-back', '🛫 호텔 → 공항 (귀국일)', `<div class="stack">${AIRPORT.from.map(routeOption).join('')}</div>`)}
-      ${sec('weather', '🧥 날씨·준비물', `<div class="card stack">
+      ${sec('weather', '🧥 날씨·준비물', `<div data-wx-table>${wxTableHTML()}</div>
+      <div class="card stack" style="margin-top:10px">
         <p style="margin:0">${INFO.weather}</p>
         <div class="checklist">${INFO.packing.map((x, i) => `<label><input type="checkbox" data-check="${i}" ${checks[i] ? 'checked' : ''}><span>${esc(x)}</span></label>`).join('')}</div>
       </div>`, `${packed}/${INFO.packing.length}`)}
@@ -655,6 +761,7 @@
       ${sec('sos', '🚨 긴급 연락처', `<div class="card"><dl class="facts">${INFO.emergency.map((e) => `<dt>${esc(e.label)}</dt><dd>${e.tel ? `<a href="tel:${esc(e.tel)}">${esc(e.value)}</a>` : esc(e.value)}</dd>`).join('')}</dl></div>`)}
       <p class="small muted" style="margin-top:20px">영업시간·휴무일은 ${esc(TRIP.checked)} 기준으로 조사한 정보예요. 출발 전 구글맵에서 한 번 더 확인해 주세요.</p>`;
     refreshFx();
+    refreshWx();
     if (state.jumpTo) { const k = state.jumpTo; state.jumpTo = null; setTimeout(() => jumpToSection(k), 50); }
   }
 
