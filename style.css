@@ -471,3 +471,29 @@ label.btn input[hidden] { display: none; }
 .sec[open] > .sec-title::after { transform: rotate(-135deg); margin-top: 4px; }
 .sec-body { padding: 10px 0 6px; }
 .sec-body > .card:first-child, .sec-body > .stack:first-child { margin-top: 0; }
+
+/* ---------- 앱 안 브라우저 안내 ---------- */
+.inapp { max-width: 720px; margin: 12px auto 0; padding: 14px 16px; background: var(--gold-soft); border: 1px solid var(--gold); border-radius: var(--radius); }
+@media (max-width: 752px) { .inapp { margin: 12px 16px 0; } }
+.inapp b { font-size: 17px; }
+.inapp p { margin: 6px 0 10px; font-size: 15px; color: var(--ink-2); }
+
+/* ---------- 환율 계산기 ---------- */
+.fx-row { display: flex; align-items: center; gap: 10px; border: 2px solid var(--navy); border-radius: 14px; padding: 6px 14px; background: var(--surface); }
+.fx-in { flex: 1; min-width: 0; border: 0; background: none; color: var(--ink); font: inherit; font-size: 30px; font-weight: 800; padding: 6px 0; outline: none; font-variant-numeric: tabular-nums; }
+.fx-unit { font-size: 20px; font-weight: 700; color: var(--ink-2); }
+.fx-out { font-size: 24px; font-weight: 800; color: var(--green); font-variant-numeric: tabular-nums; }
+.fx-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ---------- 내 여행 메모 ---------- */
+.note-group { border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px 12px; margin: 0; display: grid; gap: 8px; }
+.note-group legend { font-weight: 700; padding: 0 6px; }
+.note-group label, .note-memo { display: grid; gap: 4px; font-size: 14px; color: var(--ink-2); font-weight: 600; }
+.note-group input, .note-memo textarea { font: inherit; font-size: 16px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); }
+.note-memo textarea { resize: vertical; }
+.pin-note { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 12px; border-radius: 14px; background: #e8effc; border: 1px solid #bccdf2; color: var(--ink); font-size: 15px; text-decoration: none; }
+.pin-note > span { flex: 1; min-width: 0; }
+.pin-note.empty-note { background: var(--surface); border-style: dashed; border-color: var(--line); color: var(--ink-2); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .pin-note:not(.empty-note) { background: #1b2a49; border-color: #2f4778; }
+}

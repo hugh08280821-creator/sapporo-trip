@@ -317,10 +317,14 @@
     let hero;
     if (cur >= 0) {
       const next = [...plan.days[cur]].filter((it) => it.time && it.time >= hm && !it.move).sort((a, b) => a.time.localeCompare(b.time))[0];
+      const nextPlace = next && next.place ? byId[next.place] : null;
       hero = `<div class="hero"><h2>${esc(DAYS[cur].label)} · 즐거운 여행 되세요!</h2>
-        <p>${next ? `다음 일정 <b>${esc(next.time)}</b> ${esc(next.place ? byId[next.place].name_ko : next.title)}` : '오늘도 좋은 하루 보내세요 🌙'}</p>
-        <div class="now"><a class="btn gold" href="${gmapsDir(HOTEL, 'transit')}" target="_blank" rel="noopener">🏨 호텔로 돌아가기</a>
-        <button class="btn" data-taxi="hotel">🚕 택시에 보여주기</button></div></div>`;
+        <p>${next ? `다음 일정 <b>${esc(next.time)}</b> ${esc(nextPlace ? nextPlace.name_ko : next.title)}` : '오늘도 좋은 하루 보내세요 🌙'}</p>
+        <div class="now">
+          ${nextPlace ? `<a class="btn gold" href="${gmapsDir(nextPlace, 'transit')}" target="_blank" rel="noopener">🧭 다음 일정 길찾기</a>` : ''}
+          <a class="btn ${nextPlace ? '' : 'gold'}" href="${gmapsDir(HOTEL, 'transit')}" target="_blank" rel="noopener">🏨 호텔로 돌아가기</a>
+          <button class="btn" data-taxi="${nextPlace ? esc(nextPlace.id) : 'hotel'}">🚕 택시에 보여주기</button>
+        </div></div>`;
     } else if (dd > 0) {
       hero = `<div class="hero"><h2>여행까지 D-${dd}</h2><p>${esc(TRIP.subtitle)}</p></div>`;
     } else {
@@ -352,6 +356,7 @@
         ${day.length ? `<button class="btn small" data-edit>${editing ? '✓ 완료' : '✏️ 편집'}</button>` : ''}
         ${editing && day.length > 1 ? '<button class="btn small" data-sort-time>⏱ 시간순</button>' : ''}
       </div>
+      ${pinnedNoteHTML(dayIdx)}
       ${day.length ? `<ol class="plan-list">${list}</ol>` : empty}
       <div class="btn-row" style="margin-top:14px">
         <button class="btn primary" data-picker>＋ 장소 추가</button>
@@ -479,11 +484,105 @@
       <div class="card" style="margin-top:12px"><b>💡 쇼핑할 때 알아 둘 것</b>
         <ul class="stack" style="margin:8px 0 0;padding-left:20px;font-size:15px">${SHOP.tips.map((t) => `<li>${t}</li>`).join('')}</ul></div>`;
   }
+  function jumpToSection(key) {
+    const el = document.getElementById(`sec-${key}`);
+    if (!el) return;
+    el.open = true;
+    setInfoOpen(key, true);
+    window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - $('.top').offsetHeight - 8, behavior: 'smooth' });
+  }
   function rerenderShop() {
     // 입력 중인 칸이 사라지지 않도록 쇼핑 부분만 다시 그리기
     const y = window.scrollY;
     renderInfo();
     window.scrollTo(0, y);
+  }
+
+  /* ---------------- 내 여행 메모 (이 휴대폰에만 저장, 공유 링크에도 넣지 않음) ---------------- */
+  let notes = store.get('notes_v1', {});
+  const NOTE_FIELDS = [
+    { group: '✈️ 가는 비행기 (22일)', fields: [['out_no', '편명', '예: KE765'], ['out_time', '도착 시각', '예: 10:30 신치토세']] },
+    { group: '🛫 오는 비행기 (24일)', fields: [['in_no', '편명', '예: KE766'], ['in_time', '출발 시각', '예: 18:00']] },
+    { group: '🏨 호텔', fields: [['hotel_no', '예약 번호', '체크인할 때 보여 줄 번호']] },
+    { group: '🚌 비에이 투어 (23일)', fields: [['tour_company', '투어 회사', ''], ['tour_time', '집합 시각', '예: 07:30'], ['tour_place', '집합 장소', '예: 삿포로역 북쪽 출구'], ['tour_voucher', '예약·바우처 번호', ''], ['tour_phone', '투어 연락처', '']] },
+  ];
+  const noteVal = (k) => (notes[k] || '').trim();
+  function placeSearchURL(text) {
+    const u = new URL('https://www.google.com/maps/search/');
+    u.searchParams.set('api', '1');
+    u.searchParams.set('query', /札幌|삿포로|Sapporo/i.test(text) ? text : `${text} 札幌`);
+    return u.toString();
+  }
+  function notesHTML() {
+    const groups = NOTE_FIELDS.map((g) => `<fieldset class="note-group"><legend>${g.group}</legend>
+      ${g.fields.map(([k, label, ph]) => `<label>${esc(label)}<input data-note="${k}" value="${esc(notes[k] || '')}" placeholder="${esc(ph)}" autocomplete="off"></label>`).join('')}
+    </fieldset>`).join('');
+    const place = noteVal('tour_place');
+    return `<div class="card stack">
+      <p class="small muted" style="margin:0">🔒 여기 적은 내용은 <b>이 휴대폰에만</b> 저장되고, 일정 공유 링크에도 들어가지 않아요.</p>
+      ${groups}
+      ${place ? `<div class="btn-row"><a class="btn small primary" href="${placeSearchURL(place)}" target="_blank" rel="noopener">🗺 집합 장소 길찾기</a><button class="btn small" data-taxi-text="${esc(place)}">🚕 택시에 보여주기</button></div>` : ''}
+      <label class="note-memo">자유 메모<textarea data-note="memo" rows="3" placeholder="예: 투어 버스 번호, 꼭 사 올 것">${esc(notes.memo || '')}</textarea></label>
+    </div>`;
+  }
+  // 일정 탭에 그날 필요한 메모(항공편·투어 집합)를 고정해서 보여주기
+  function pinnedNoteHTML(dayIdx) {
+    if (dayIdx === 0 && (noteVal('out_no') || noteVal('out_time'))) {
+      return `<div class="pin-note">✈️ <span>가는 비행기 <b>${esc(noteVal('out_no'))}</b> ${esc(noteVal('out_time'))}</span></div>`;
+    }
+    if (dayIdx === 1) {
+      if (noteVal('tour_place') || noteVal('tour_time')) {
+        return `<div class="pin-note">🚌 <span>투어 집합 <b>${esc(noteVal('tour_time'))}</b> ${esc(noteVal('tour_place'))}${noteVal('tour_phone') ? ` · ☎ <a href="tel:${esc(noteVal('tour_phone').replace(/[^+\d]/g, ''))}">${esc(noteVal('tour_phone'))}</a>` : ''}</span>
+          ${noteVal('tour_place') ? `<a class="btn small" href="${placeSearchURL(noteVal('tour_place'))}" target="_blank" rel="noopener">길찾기</a>` : ''}</div>`;
+      }
+      return '<a class="pin-note empty-note" href="#/info" data-jump-later="notes">🚌 <span>투어 집합 장소·시간이 정해지면 <b>정보 › 내 여행 메모</b>에 적어 두세요</span></a>';
+    }
+    if (dayIdx === 2 && (noteVal('in_no') || noteVal('in_time'))) {
+      return `<div class="pin-note">🛫 <span>오는 비행기 <b>${esc(noteVal('in_no'))}</b> ${esc(noteVal('in_time'))} 출발</span><button class="btn small" data-open="airport">공항 가는 법</button></div>`;
+    }
+    return '';
+  }
+
+  /* ---------------- 환율 계산기 ---------------- */
+  const FX_FALLBACK = { rate: 8.51, date: '2026-11-03' }; // 1엔 = ?원 (불러오기 실패 시)
+  let fx = store.get('fx', FX_FALLBACK);
+  const fmtWon = (n) => {
+    const won = Math.round(n / 10) * 10;
+    return `${won.toLocaleString('ko-KR')}원${won >= 10000 ? ` (약 ${(won / 10000).toFixed(won >= 100000 ? 0 : 1)}만 원)` : ''}`;
+  };
+  const fxResult = (v) => (state.fxDir === 'krw' ? `≈ ${Math.round(v / fx.rate).toLocaleString('ko-KR')}엔` : `≈ ${fmtWon(v * fx.rate)}`);
+  function fxHTML() {
+    const krw = state.fxDir === 'krw';
+    const v = Number(state.fxVal) || 0;
+    const quick = (krw ? [10000, 30000, 50000, 100000] : [500, 1000, 3000, 5000, 10000])
+      .map((n) => `<button class="chip" data-fx-quick="${n}">${n.toLocaleString('ko-KR')}${krw ? '원' : '엔'}</button>`).join('');
+    return `<div class="card stack">
+      <div class="fx-row">
+        <input class="fx-in" data-fx-in inputmode="numeric" pattern="[0-9]*" placeholder="0" value="${v ? v.toLocaleString('ko-KR') : ''}" aria-label="${krw ? '원' : '엔'} 금액">
+        <span class="fx-unit">${krw ? '원' : '엔'}</span>
+      </div>
+      <div class="fx-out" id="fx-out">${v ? esc(fxResult(v)) : '가격표 숫자를 넣어 보세요'}</div>
+      <div class="filters" style="padding-bottom:0">${quick}</div>
+      <div class="fx-foot">
+        <span class="small muted" id="fx-rate">1엔 = ${fx.rate.toFixed(2)}원 · ${esc(fx.date.slice(5).replace('-', '/'))} 기준</span>
+        <button class="linkish small" data-fx-swap>⇄ ${krw ? '엔 → 원으로' : '원 → 엔으로'}</button>
+      </div>
+      <p class="small muted" style="margin:0">카드로 결제하면 카드사 환율·수수료 때문에 조금 달라질 수 있어요.</p>
+    </div>`;
+  }
+  async function refreshFx() {
+    if (Date.now() - (fx.at || 0) < 6 * 3600 * 1000) return;
+    try {
+      const j = await (await fetch('https://open.er-api.com/v6/latest/JPY')).json();
+      if (j.result !== 'success' || !j.rates || !j.rates.KRW) return;
+      fx = { rate: j.rates.KRW, date: new Date(j.time_last_update_unix * 1000).toISOString().slice(0, 10), at: Date.now() };
+      store.set('fx', fx);
+      const r = $('#fx-rate');
+      if (r) r.textContent = `1엔 = ${fx.rate.toFixed(2)}원 · ${fx.date.slice(5).replace('-', '/')} 기준`;
+      const v = Number(state.fxVal) || 0;
+      const out = $('#fx-out');
+      if (out && v) out.textContent = fxResult(v);
+    } catch { /* 오프라인이면 마지막 환율 사용 */ }
   }
 
   /* ---------------- 정보 ---------------- */
@@ -497,7 +596,7 @@
   }
 
   // 정보 탭 섹션: 제목을 눌러 열고 닫기, 열림 상태는 휴대폰에 기억
-  const INFO_OPEN_DEFAULT = { shop: true, hotel: true };
+  const INFO_OPEN_DEFAULT = { fx: true, shop: true, hotel: true };
   const infoOpen = (key) => { const o = store.get('infoOpen', INFO_OPEN_DEFAULT); return key in o ? o[key] : !!INFO_OPEN_DEFAULT[key]; };
   function setInfoOpen(key, open) { const o = store.get('infoOpen', { ...INFO_OPEN_DEFAULT }); o[key] = open; store.set('infoOpen', o); }
   function sec(key, title, body, hint = '') {
@@ -512,13 +611,16 @@
     const checks = store.get('checks', {});
     const packed = INFO.packing.filter((_, i) => checks[i]).length;
     const bought = shop.filter((x) => x.done).length;
-    const jumps = [['shop', '🛍 쇼핑'], ['hotel', '🏨 호텔'], ['reserve', '📞 예약'], ['airport', '✈️ 공항'], ['weather', '🧥 준비물'], ['phrase', '🗣 일본어'], ['sos', '🚨 긴급']]
+    const jumps = [['fx', '💴 환율'], ['shop', '🛍 쇼핑'], ['notes', '🔒 내 메모'], ['hotel', '🏨 호텔'], ['reserve', '📞 예약'], ['airport', '✈️ 공항'], ['weather', '🧥 준비물'], ['phrase', '🗣 일본어'], ['sos', '🚨 긴급']]
       .map(([k, l]) => `<button class="chip" data-jump="${k}">${l}</button>`).join('');
-    const allOpen = ['shop', 'hotel', 'reserve', 'airport', 'airport-back', 'weather', 'tips', 'phrase', 'sos'].every(infoOpen);
+    const allOpen = ['fx', 'shop', 'notes', 'hotel', 'reserve', 'airport', 'airport-back', 'weather', 'tips', 'phrase', 'sos'].every(infoOpen);
+    const noteCount = Object.keys(notes).filter((k) => noteVal(k)).length;
     view.innerHTML = `
       <div class="filters">${jumps}</div>
       <div class="sec-tools"><button class="linkish small" data-sec-all="${allOpen ? '0' : '1'}">${allOpen ? '모두 접기' : '모두 펼치기'}</button></div>
+      ${sec('fx', '💴 환율 계산기', fxHTML())}
       ${sec('shop', '🛍 쇼핑 리스트', shopHTML(), shop.length ? `${bought}/${shop.length}` : '')}
+      ${sec('notes', '🔒 내 여행 메모', notesHTML(), noteCount ? `${noteCount}개 적음` : '항공편·투어')}
       ${sec('hotel', '🏨 호텔', `
       <div class="card stack">
         <div><h3 style="font-size:19px">${esc(h.name_ko)}</h3><div class="muted">${esc(h.name_ja)}</div></div>
@@ -552,6 +654,8 @@
         <span class="ko">${esc(p.ko)}</span><span class="ja">${esc(p.ja)}</span><span class="rd">${esc(p.rd)}</span></div>`).join('')}</div>`)}
       ${sec('sos', '🚨 긴급 연락처', `<div class="card"><dl class="facts">${INFO.emergency.map((e) => `<dt>${esc(e.label)}</dt><dd>${e.tel ? `<a href="tel:${esc(e.tel)}">${esc(e.value)}</a>` : esc(e.value)}</dd>`).join('')}</dl></div>`)}
       <p class="small muted" style="margin-top:20px">영업시간·휴무일은 ${esc(TRIP.checked)} 기준으로 조사한 정보예요. 출발 전 구글맵에서 한 번 더 확인해 주세요.</p>`;
+    refreshFx();
+    if (state.jumpTo) { const k = state.jumpTo; state.jumpTo = null; setTimeout(() => jumpToSection(k), 50); }
   }
 
   /* ---------------- 상세 시트 ---------------- */
@@ -680,6 +784,13 @@
       <div class="sc-ko">기사님께 이 화면을 보여주세요 · ${esc(p.name_ko)}</div>`;
     $('#showcard').hidden = false;
   }
+  function showTaxiText(text) {
+    $('#showcard-inner').innerHTML = `
+      <div class="sc-lead">運転手さん、こちらまでお願いします。</div>
+      <div class="sc-name">${esc(text)}</div>
+      <div class="sc-ko">기사님께 이 화면을 보여주세요</div>`;
+    $('#showcard').hidden = false;
+  }
   function showPhrase(i) {
     const p = INFO.phrases[i];
     $('#showcard-inner').innerHTML = `<div class="sc-name" style="font-size:36px">${esc(p.ja)}</div><div class="sc-ko" style="font-size:20px">${esc(p.ko)} · ${esc(p.rd)}</div>`;
@@ -797,15 +908,22 @@
     const t = e.target.closest('[data-open],[data-taxi],[data-day],[data-cat],[data-sort],[data-geo],[data-mapf],[data-phrase],[data-close],[data-confirm],'
       + '[data-toggle-day],[data-pick],[data-pickf],[data-picker],[data-memo-form],[data-edit],[data-sort-time],[data-move],[data-del],'
       + '[data-share],[data-import-rec],[data-import-accept],[data-clear],[data-close-sheet],'
-      + '[data-jump],[data-sec-all],[data-shop-del],[data-shop-rec],[data-shop-hide]');
+      + '[data-jump],[data-jump-later],[data-taxi-text],[data-fx-swap],[data-fx-quick],[data-sec-all],[data-shop-del],[data-shop-rec],[data-shop-hide]');
     if (!t || t.disabled) return;
-    if (t.dataset.jump) {
-      const el = document.getElementById(`sec-${t.dataset.jump}`);
-      if (el) {
-        el.open = true;
-        setInfoOpen(t.dataset.jump, true);
-        window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - $('.top').offsetHeight - 8, behavior: 'smooth' });
-      }
+    if (t.dataset.jump) { jumpToSection(t.dataset.jump); return; }
+    if (t.dataset.jumpLater) { state.jumpTo = t.dataset.jumpLater; return; } // #/info로 이동한 뒤 그 섹션을 열기
+    if (t.dataset.taxiText) { showTaxiText(t.dataset.taxiText); return; }
+    if (t.dataset.fxSwap != null) {
+      state.fxDir = state.fxDir === 'krw' ? 'jpy' : 'krw';
+      state.fxVal = '';
+      rerenderShop();
+      return;
+    }
+    if (t.dataset.fxQuick) {
+      state.fxVal = t.dataset.fxQuick;
+      const inp = $('[data-fx-in]');
+      if (inp) inp.value = Number(state.fxVal).toLocaleString('ko-KR');
+      $('#fx-out').textContent = fxResult(Number(state.fxVal));
       return;
     }
     if (t.dataset.secAll != null) {
@@ -919,6 +1037,13 @@
   });
   document.addEventListener('input', (e) => {
     if (e.target.matches('[data-pickq]')) { state.pickQ = e.target.value; $('#pick-list').innerHTML = pickerListHTML(); }
+    if (e.target.matches('[data-note]')) { notes[e.target.dataset.note] = e.target.value; store.set('notes_v1', notes); }
+    if (e.target.matches('[data-fx-in]')) {
+      const digits = e.target.value.replace(/[^\d]/g, '').slice(0, 9);
+      state.fxVal = digits;
+      e.target.value = digits ? Number(digits).toLocaleString('ko-KR') : '';
+      $('#fx-out').textContent = digits ? fxResult(Number(digits)) : '가격표 숫자를 넣어 보세요';
+    }
   });
   document.addEventListener('submit', (e) => {
     if (e.target.matches('[data-shop-add]')) {
@@ -971,7 +1096,31 @@
   // 여행기(diary.js)에서 쓰는 공용 도구
   window.APP = { esc, toast, openSheet, closeSheet, askConfirm, byId, haversine };
 
+  // 카톡·네이버 등 앱 안 브라우저에서는 위치·사진 저장이 막히고 저장 공간도 따로라서 기본 브라우저로 안내
+  function inAppBanner() {
+    const ua = navigator.userAgent;
+    const kakao = /KAKAOTALK/i.test(ua);
+    const other = /NAVER\(inapp|Instagram|FBAN|FBAV|Line\/|DaumApps|everytimeApp/i.test(ua);
+    if (!kakao && !other) return;
+    try { if (sessionStorage.getItem('sp_inapp_hide')) return; } catch { /* 무시 */ }
+    const isIOS = /iPhone|iPad|iPod/i.test(ua);
+    const how = kakao
+      ? '아래 버튼을 누르면 휴대폰 기본 브라우저로 열려요.'
+      : `오른쪽 위 ${isIOS ? '공유(⋯)' : '메뉴(⋮)'} 버튼 → 「다른 브라우저로 열기」를 눌러 주세요.`;
+    const el = document.createElement('div');
+    el.className = 'inapp';
+    el.innerHTML = `<b>📱 ${isIOS ? 'Safari' : 'Chrome'}에서 열어 주세요</b>
+      <p>지금은 ${kakao ? '카카오톡' : '앱'} 안에서 열려 있어서 내 위치·사진 저장이 잘 안 되고, 적어 둔 일정이 따로 저장될 수 있어요. ${how}</p>
+      <div class="btn-row">${kakao ? '<button class="btn gold small" data-inapp-open>기본 브라우저로 열기</button>' : ''}<button class="btn small" data-inapp-hide>그냥 볼게요</button></div>`;
+    $('#view').before(el);
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('[data-inapp-open]')) location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(location.href)}`;
+      if (e.target.closest('[data-inapp-hide]')) { el.remove(); try { sessionStorage.setItem('sp_inapp_hide', '1'); } catch { /* 무시 */ } }
+    });
+  }
+
   /* ---------------- 시작 ---------------- */
+  inAppBanner();
   // 상단 고정 영역(둘러보기 전환 바, 지도)이 헤더 바로 아래에 붙도록 헤더 높이를 기억
   const setHeaderH = () => document.documentElement.style.setProperty('--header-h', `${$('.top').offsetHeight}px`);
   setHeaderH();
