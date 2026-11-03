@@ -196,7 +196,7 @@
   }
 
   pill.addEventListener('click', () => {
-    if (state.geoError && !state.pos) { alert(state.geoError); state.geoError = null; }
+    if (state.geoError && !state.pos) { alertSheet(state.geoError); state.geoError = null; return; }
     startWatch();
     if (state.pos && inHokkaido(state.pos)) location.hash = '#/map';
   });
@@ -204,6 +204,8 @@
   /* ---------------- 공통 조각 ---------------- */
   const catOf = (p) => CATS[p.cat] || { label: '', emoji: '📍' };
 
+  // 타베로그 평점은 소수 둘째 자리까지 같은 모양으로
+  const fmtRating = (r) => Number(r).toFixed(2);
   function placeCard(p) {
     const cw = closedWarn(p);
     return `<button type="button" class="pcard" data-open="${esc(p.id)}">
@@ -215,8 +217,8 @@
         <span class="tl-meta">
           <span class="tag">${esc(catOf(p).label)}</span>
           ${p.price ? `<span class="tag">${esc(p.price)}</span>` : ''}
-          ${p.rating ? `<span class="tag">★ ${esc(p.rating)}</span>` : ''}
-          ${p.route ? `<span class="tag">🏨 ${esc(p.route.min)}분</span>` : ''}
+          ${p.rating ? `<span class="tag">타베로그 ${fmtRating(p.rating)}</span>` : ''}
+          ${p.route ? `<span class="tag">호텔에서 ${esc(p.route.min)}분</span>` : ''}
           ${cw ? `<span class="tag warn">${esc(cw)}</span>` : ''}
           ${plannedDays(p.id).map((i) => `<span class="tag ok">✓ ${esc(DAYS[i].label)}</span>`).join('')}
           <span class="tag dist" data-dist="${esc(p.id)}" hidden></span>
@@ -256,9 +258,11 @@
     else { day.push({ uid: newUid(), place: placeId }); toast(`${DAYS[dayIdx].label} 일정에 넣었어요 ✓`); }
     savePlan();
   }
+  // 결혼기념일 디너는 따로 표시 (예전에 불러온 일정은 메모 문구로 알아봄)
+  const isAnniv = (it) => !!it.anniv || /결혼기념일/.test(`${it.memo || ''} ${it.title || ''}`);
   function recommendedPlan() {
     return DAYS.map((d) => d.items.map((it) => (it.place
-      ? { uid: newUid(), place: it.place, time: it.time, memo: it.text || '' }
+      ? { uid: newUid(), place: it.place, time: it.time, memo: it.text || '', anniv: /결혼기념일/.test(it.text || '') || undefined }
       : { uid: newUid(), title: it.kind === 'move' ? stripTags(it.text).replace(/^[^\p{L}\p{N}]+/u, '') : it.title, time: it.time, memo: it.kind === 'move' ? '' : (it.text || ''), move: it.kind === 'move' })));
   }
 
@@ -307,7 +311,7 @@
       const what = !d.length ? '비어 있음' : names.length ? `${names.slice(0, 3).join(', ')}${names.length > 3 ? ' 외' : ''}` : '메모만';
       return `<li><b>${esc(DAYS[i].label)}</b> ${d.length}개 — ${esc(what)}</li>`;
     }).join('');
-    openSheet(`<div class="d-head"><div class="cat">📩 받은 일정</div><h2 id="sheet-title">일정을 받았어요</h2></div>
+    openSheet(`<div class="d-head"><h2 id="sheet-title">📩 일정을 받았어요</h2></div>
       <ul class="stack" style="padding-left:20px;margin:14px 0">${summary}</ul>
       <p class="small muted">내 폰에 있던 일정${shopLine ? '과 쇼핑 리스트' : ''}는 받은 내용으로 바뀌어요.</p>
       <div class="btn-row"><button class="btn primary" data-import-accept>내 폰에 저장</button><button class="btn" data-close-sheet>취소</button></div>`);
@@ -315,8 +319,15 @@
     history.replaceState(null, '', '#/plan');
   }
 
+  // 거리 안내의 기준점: 장소면 그 장소, 호텔 관련 메모면 호텔, 그 밖의 메모(이동·투어 등)는 위치를 모르니 안내하지 않음
+  function anchorOf(it) {
+    if (it.place) return byId[it.place] || null;
+    if (!it.move && /호텔|체크인|체크아웃|짐 (맡기|찾)/.test(it.title || '')) return HOTEL;
+    return null;
+  }
   function travelHint(a, b) {
     const d = haversine(a, b);
+    if (d < 60) return '';
     const how = d < 1200 ? `🚶 걸어서 약 ${walkMin(d)}분` : d < 4000 ? `🚇 약 ${fmtDist(d)} · 지하철이나 택시` : `🚆 약 ${fmtDist(d)} · 대중교통`;
     const u = new URL('https://www.google.com/maps/dir/');
     u.searchParams.set('api', '1');
@@ -326,11 +337,11 @@
     return `<li class="hint">${how} <a href="${u}" target="_blank" rel="noopener">길 보기</a></li>`;
   }
 
-  function planItemHTML(it, i, day, dayIdx, editing, isToday, hm) {
+  function planItemHTML(it, i, day, dayIdx, editing, status) {
     const p = it.place ? byId[it.place] : null;
-    const done = isToday && it.time && it.time < hm;
     const title = p ? p.name_ko : it.title;
-    const emoji = p ? catOf(p).emoji : it.move ? '➡️' : '📝';
+    const anniv = isAnniv(it);
+    const emoji = anniv ? '💍' : p ? catOf(p).emoji : it.move ? '➡️' : '📝';
     const cw = p ? closedWarn(p, DAYS[dayIdx].date) : '';
     const controls = editing ? `<div class="pi-edit">
         <input type="time" value="${esc(it.time || '')}" data-time="${esc(it.uid)}" aria-label="시간">
@@ -339,16 +350,32 @@
         <button class="btn small danger" data-del="${esc(it.uid)}" aria-label="삭제">삭제</button>
       </div>` : '';
     const body = `<span class="pi-emoji" aria-hidden="true">${emoji}</span>
-      <span class="pi-main"><h3>${esc(title)}</h3>
-        ${it.memo ? `<p>${esc(it.memo)}</p>` : p ? `<p class="muted">${esc(p.area)} · ${esc(catOf(p).label)}${p.rating ? ` · ★${esc(p.rating)}` : ''}</p>` : ''}
+      <span class="pi-main">
+        ${status === 'now' ? '<span class="now-badge">지금</span>' : ''}
+        ${anniv ? '<span class="anniv-badge">결혼기념일 디너</span>' : ''}
+        <h3>${esc(title)}</h3>
+        ${it.memo ? `<p>${esc(anniv ? it.memo.replace(/^💍\s*결혼기념일 디너\.\s*/, '') : it.memo)}</p>` : p ? `<p class="muted">${esc(p.area)} · ${esc(catOf(p).label)}${p.rating ? ` · 타베로그 ${fmtRating(p.rating)}` : ''}</p>` : ''}
         ${p ? `<span class="tl-meta">${cw ? `<span class="tag warn">${esc(cw)}</span>` : ''}<span class="tag dist" data-dist="${esc(p.id)}" hidden></span></span>` : ''}
       </span>`;
-    return `<li class="pi${it.move ? ' is-move' : ''}${done ? ' done' : ''}">
+    return `<li class="pi${it.move ? ' is-move' : ''}${status ? ` ${status}` : ''}${anniv ? ' anniv' : ''}" ${status === 'now' ? 'id="pi-now"' : ''}>
       <div class="pi-time">${esc(it.time || '')}</div>
       <div class="pi-card">
         ${p && !editing ? `<button type="button" class="pi-row" data-open="${esc(p.id)}">${body}</button>` : `<div class="pi-row">${body}</div>`}
+        ${anniv && !editing ? '<button type="button" class="anniv-phrase" data-phrase="3">💍 「오늘 결혼기념일이에요」 일본어로 보여주기</button>' : ''}
         ${controls}
       </div></li>`;
+  }
+  // 여행 당일: 시작 시각이 지난 마지막 일정이 '지금', 그 앞은 '끝남'
+  function dayStatuses(day, isToday, hm) {
+    const st = day.map(() => '');
+    if (!isToday) return st;
+    let nowIdx = -1;
+    day.forEach((it, i) => { if (it.time && it.time <= hm) nowIdx = i; });
+    day.forEach((it, i) => {
+      if (i === nowIdx) st[i] = 'now';
+      else if (nowIdx >= 0 && i < nowIdx && it.time) st[i] = 'done';
+    });
+    return st;
   }
 
   function renderPlan(dayIdx) {
@@ -363,10 +390,17 @@
 
     let hero;
     if (cur >= 0) {
-      const next = [...plan.days[cur]].filter((it) => it.time && it.time >= hm && !it.move).sort((a, b) => a.time.localeCompare(b.time))[0];
+      const today = plan.days[cur];
+      const st = dayStatuses(today, true, hm);
+      const nowItem = today[st.indexOf('now')];
+      const next = today.find((it, i) => i > st.indexOf('now') && it.time && it.time > hm && !it.move);
       const nextPlace = next && next.place ? byId[next.place] : null;
-      hero = `<div class="hero"><h2>${esc(DAYS[cur].label)} · 즐거운 여행 되세요!</h2>
-        <p>${next ? `다음 일정 <b>${esc(next.time)}</b> ${esc(nextPlace ? nextPlace.name_ko : next.title)}` : '오늘도 좋은 하루 보내세요 🌙'}</p>
+      const nameOf = (it) => (it.place && byId[it.place] ? byId[it.place].name_ko : it.title);
+      hero = `<div class="hero"><h2>${esc(DAYS[cur].label)} · ${esc(DAYS[cur].dateLabel)}</h2>
+        <dl class="now-next">
+          ${nowItem ? `<div><dt>지금</dt><dd>${esc(nameOf(nowItem))}</dd></div>` : ''}
+          <div><dt>다음</dt><dd>${next ? `<b>${esc(next.time)}</b> ${esc(nameOf(next))}` : '오늘 일정을 다 마쳤어요. 푹 쉬세요'}</dd></div>
+        </dl>
         <div class="now">
           ${nextPlace ? `<a class="btn gold" href="${gmapsDir(nextPlace, 'transit')}" target="_blank" rel="noopener">🧭 다음 일정 길찾기</a>` : ''}
           <a class="btn ${nextPlace ? '' : 'gold'}" href="${gmapsDir(HOTEL, 'transit')}" target="_blank" rel="noopener">🏨 호텔로 돌아가기</a>
@@ -374,7 +408,7 @@
           <button class="btn" data-send-loc>📤 내 위치 보내기</button>
         </div></div>`;
     } else if (dd > 0) {
-      hero = `<div class="hero"><h2>여행까지 D-${dd}</h2><p>${esc(TRIP.subtitle)}</p></div>`;
+      hero = `<div class="hero"><h2>결혼기념일 여행까지 D-${dd}</h2><p>${esc(TRIP.subtitle)}</p></div>`;
     } else {
       hero = `<div class="hero"><h2>${esc(TRIP.title)}</h2><p>${esc(TRIP.subtitle)}</p></div>`;
     }
@@ -382,14 +416,19 @@
     const tabs = DAYS.map((d, i) => `<button class="daytab" role="tab" aria-selected="${i === dayIdx}" data-day="${i}">
         <b>${esc(d.label)}</b><span>${esc(d.dateLabel)}</span><em>${plan.days[i].length ? `${plan.days[i].length}개` : '비어 있음'}</em></button>`).join('');
 
+    const statuses = dayStatuses(day, isToday, hm);
     let list = '';
     day.forEach((it, i) => {
-      if (i > 0) {
-        const prev = [...day.slice(0, i)].reverse().find((x) => x.place);
-        if (prev && it.place && !editing) list += travelHint(byId[prev.place], byId[it.place]);
+      // 바로 앞 항목과 이 항목의 위치를 둘 다 알 때만 거리 안내
+      if (i > 0 && !editing) {
+        const a = anchorOf(day[i - 1]), b = anchorOf(it);
+        if (a && b) list += travelHint(a, b);
       }
-      list += planItemHTML(it, i, day, dayIdx, editing, isToday, hm);
+      list += planItemHTML(it, i, day, dayIdx, editing, statuses[i]);
     });
+    const collageNudge = day.length && !editing
+      ? `<a class="day-end" href="#/diary"><span aria-hidden="true">📸</span><span><b>${dayIdx === DAYS.length - 1 ? '여행 사진으로 콜라주 만들기' : '오늘 찍은 사진으로 콜라주 만들기'}</b><small>앨범에 사진을 올리면 한 장으로 엮어 드려요</small></span></a>`
+      : '';
 
     const empty = `<div class="empty card">
         <div style="font-size:40px">🗓</div>
@@ -407,6 +446,7 @@
       <div data-wx-day="${dayIdx}">${wxDayHTML(dayIdx)}</div>
       ${pinnedNoteHTML(dayIdx)}
       ${day.length ? `<ol class="plan-list">${list}</ol>` : empty}
+      ${collageNudge}
       <div class="btn-row" style="margin-top:14px">
         <button class="btn primary" data-picker>＋ 장소 추가</button>
         <button class="btn" data-memo-form>＋ 메모 추가</button>
@@ -416,10 +456,13 @@
         <button class="btn gold" data-share style="width:100%">📤 일정·쇼핑 리스트 보내기 (카톡 공유)</button>
         <p class="small muted" style="margin:0">보낸 링크를 받은 사람이 누르면 같은 일정과 쇼핑 리스트가 그 폰에도 들어가요. 각자 폰에 저장되니 고친 뒤에는 다시 보내 주세요.</p>
         <button class="btn" data-import-rec style="width:100%">✨ 추천 일정 불러오기</button>
-        <p class="small muted" style="margin:0">미리 짜 둔 2박 3일 코스(오타루 하루, 모이와산 기념일 디너 포함)로 채워요. 불러온 뒤 자유롭게 고칠 수 있어요.</p>
+        <p class="small muted" style="margin:0">미리 짜 둔 2박 3일 코스로 채워요: 1일차 오타루와 결혼기념일 디너, 2일차 비에이 투어, 3일차 시내 산책. 불러온 뒤 자유롭게 고칠 수 있어요.</p>
         ${plan.days.some((d) => d.length) ? '<button class="btn small" data-clear style="justify-self:start">일정 전부 지우기</button>' : ''}
       </div>`;
     refreshWx();
+    // 여행 당일에는 지금 일정이 화면 가운데 오도록 (다시 그릴 때는 rerender가 스크롤을 되돌림)
+    const nowEl = $('#pi-now');
+    if (nowEl && !editing && !state.keepScroll) requestAnimationFrame(() => nowEl.scrollIntoView({ block: 'center' }));
   }
 
   /* ---------------- 장소 고르기 시트 ---------------- */
@@ -448,7 +491,7 @@
     const dayIdx = state.day ?? 0;
     const chips = [['all', '전체'], ['food', '🍣 맛집'], ['cafe', '🍰 카페'], ['sight', '⛩ 명소'], ['otaru', '🚃 오타루'], ['near', '📍 가까운 순']]
       .map(([k, l]) => `<button class="chip" data-pickf="${k}" aria-pressed="${(state.pickF || 'all') === k}">${l}</button>`).join('');
-    openSheet(`<div class="d-head"><div class="cat">📅 ${esc(DAYS[dayIdx].label)} · ${esc(DAYS[dayIdx].dateLabel)}</div><h2 id="sheet-title">어디에 가실래요?</h2></div>
+    openSheet(`<div class="d-head"><h2 id="sheet-title">어디에 가실래요?</h2><p class="d-sub">📅 ${esc(DAYS[dayIdx].label)} · ${esc(DAYS[dayIdx].dateLabel)}에 넣어요</p></div>
       <input type="search" class="search" placeholder="이름·메뉴로 찾기 (예: 라멘, 게, 오타루)" value="${esc(state.pickQ || '')}" data-pickq>
       <div class="filters" style="margin-top:10px">${chips}</div>
       <div id="pick-list" class="pick-list">${pickerListHTML()}</div>
@@ -456,7 +499,7 @@
   }
   function openMemoForm() {
     const dayIdx = state.day ?? 0;
-    openSheet(`<div class="d-head"><div class="cat">📝 ${esc(DAYS[dayIdx].label)}</div><h2 id="sheet-title">메모 추가</h2></div>
+    openSheet(`<div class="d-head"><h2 id="sheet-title">메모 추가</h2><p class="d-sub">📝 ${esc(DAYS[dayIdx].label)} · ${esc(DAYS[dayIdx].dateLabel)}</p></div>
       <form class="memo-form stack" data-memo-save style="margin-top:14px">
         <label>할 일 <input name="title" required maxlength="40" placeholder="예: 호텔 체크인, 기념품 쇼핑"></label>
         <label>시간 (선택) <input name="time" type="time"></label>
@@ -486,7 +529,7 @@
     view.innerHTML = `<nav class="segbar" aria-label="종류">${segs}</nav>
       <div id="near-slot">${nearBannerHTML()}</div>
       <div class="filters">${chips}</div>
-      <div class="sortbar"><span>${list.length}곳 · 🏨 = 호텔에서 걸리는 시간</span>
+      <div class="sortbar"><h2 class="sortbar-title">${{ food: '맛집', cafe: '카페', sight: '명소' }[type]} ${list.length}곳</h2>
         <button data-sort>${state.sortNear && canSort ? '추천순으로' : '📍 가까운 순'}</button></div>
       <div class="plist">${list.map(placeCard).join('')}</div>`;
   }
@@ -529,7 +572,7 @@
       </div>
       <details class="card shop-recs" ${total ? '' : 'open'}>
         <summary>🎁 삿포로 추천 기념품 <span class="small muted">${SHOP.recs.length}가지</span></summary>
-        <div class="pick-list" style="margin-top:10px">${recs}</div>
+        <div class="rec-list">${recs}</div>
       </details>
       <div class="card" style="margin-top:12px"><b>💡 쇼핑할 때 알아 둘 것</b>
         <ul class="stack" style="margin:8px 0 0;padding-left:20px;font-size:15px">${SHOP.tips.map((t) => `<li>${t}</li>`).join('')}</ul></div>`;
@@ -714,7 +757,7 @@
         <input class="fx-in" data-fx-in inputmode="numeric" pattern="[0-9]*" placeholder="0" value="${v ? v.toLocaleString('ko-KR') : ''}" aria-label="${krw ? '원' : '엔'} 금액">
         <span class="fx-unit">${krw ? '원' : '엔'}</span>
       </div>
-      <div class="fx-out" id="fx-out">${v ? esc(fxResult(v)) : '가격표 숫자를 넣어 보세요'}</div>
+      <div class="fx-out${v ? '' : ' empty'}" id="fx-out">${v ? esc(fxResult(v)) : '가격표 숫자를 넣어 보세요'}</div>
       <div class="filters" style="padding-bottom:0">${quick}</div>
       <div class="fx-foot">
         <span class="small muted" id="fx-rate">1엔 = ${fx.rate.toFixed(2)}원 · ${esc(fx.date.slice(5).replace('-', '/'))} 기준</span>
@@ -741,7 +784,8 @@
   /* ---------------- 정보 ---------------- */
   function routeOption(o) {
     return `<div class="card opt${o.rec ? ' rec' : ''}">
-      <h3>${o.rec ? '⭐ ' : ''}${esc(o.title)}</h3>
+      ${o.rec ? '<span class="rec-badge">추천</span>' : ''}
+      <h3>${esc(o.title)}</h3>
       <div class="route-sum" style="margin-top:8px">${o.min ? `<span class="tag">⏱ ${esc(o.min)}</span>` : ''}${o.fare ? `<span class="tag">💴 ${esc(o.fare)}</span>` : ''}</div>
       <ol class="route-steps">${o.steps.map((s) => `<li>${s}</li>`).join('')}</ol>
       ${o.note ? `<div class="tip">${o.note}</div>` : ''}
@@ -754,7 +798,7 @@
   function setInfoOpen(key, open) { const o = store.get('infoOpen', { ...INFO_OPEN_DEFAULT }); o[key] = open; store.set('infoOpen', o); }
   function sec(key, title, body, hint = '') {
     return `<details class="sec" id="sec-${key}" data-sec="${key}" ${infoOpen(key) ? 'open' : ''}>
-      <summary class="sec-title"><span>${title}</span>${hint ? `<span class="sec-hint">${hint}</span>` : ''}</summary>
+      <summary class="sec-title"><h2>${title}</h2>${hint ? `<span class="sec-hint">${hint}</span>` : ''}</summary>
       <div class="sec-body">${body}</div>
     </details>`;
   }
@@ -769,6 +813,10 @@
     const allOpen = ['fx', 'shop', 'notes', 'hotel', 'reserve', 'airport', 'airport-back', 'weather', 'tips', 'phrase', 'sos'].every(infoOpen);
     const noteCount = Object.keys(notes).filter((k) => noteVal(k)).length;
     view.innerHTML = `
+      <div class="setting-row">
+        <span><b>글씨 크게 보기</b><small>머리글·본문·버튼 글씨를 30% 키워요</small></span>
+        <button class="switch" role="switch" aria-checked="${isBig()}" data-bigtext><span class="knob" aria-hidden="true"></span><span class="sr-only">글씨 크게 보기</span></button>
+      </div>
       <div class="filters">${jumps}</div>
       <div class="sec-tools"><button class="linkish small" data-sec-all="${allOpen ? '0' : '1'}">${allOpen ? '모두 접기' : '모두 펼치기'}</button></div>
       ${sec('fx', '💴 환율 계산기', fxHTML())}
@@ -816,28 +864,21 @@
 
   /* ---------------- 상세 시트 ---------------- */
   function liveBoxHTML(p) {
+    // 지금 위치에서의 거리 한 줄 (길찾기 버튼은 상세 창 맨 위에 따로 있음)
     let body;
     if (!state.pos) {
       body = state.geoError
-        ? `<p style="margin:0">${esc(state.geoError)}</p>`
-        : `<p style="margin:0">내 위치를 켜면 여기서부터 거리와 걸리는 시간을 알려드려요.</p>
-           <button class="btn primary" data-geo style="margin-top:10px;width:100%">📍 내 위치 켜기</button>`;
+        ? `<span>${esc(state.geoError)}</span>`
+        : '<span>내 위치를 켜면 여기서부터 거리를 알려 드려요.</span><button class="btn small" data-geo>📍 위치 켜기</button>';
     } else if (!inHokkaido(state.pos)) {
-      body = `<p style="margin:0">지금은 삿포로 밖이라 거리를 계산하지 않아요. 현지에 도착하면 자동으로 보여요.</p>`;
+      body = '<span>삿포로에 도착하면 여기서부터 거리를 알려 드려요.</span>';
     } else {
       const d = haversine(state.pos, p);
-      body = `<div class="big">${fmtDist(d)}</div>
-        <p style="margin:2px 0 0">${d < 1500 ? `걸어서 약 ${walkMin(d)}분이에요. 걸어가셔도 좋아요.` : d < 4000 ? `걸으면 ${walkMin(d)}분쯤 — 지하철·전차나 택시를 추천해요.` : '대중교통이나 택시로 이동하세요.'}</p>
-        <p class="small muted" style="margin:4px 0 0">직선거리 기준 · 위치 정확도 ±${Math.round(state.pos.acc)}m</p>`;
+      const advice = d < 1500 ? `걸어서 약 ${walkMin(d)}분` : d < 4000 ? '지하철·전차나 택시 추천' : '대중교통이나 택시로';
+      body = `<span><b class="live-dist">${fmtDist(d)}</b> ${advice}</span>
+        ${d < 1500 ? `<a class="btn small" href="${gmapsDir(p, 'walking')}" target="_blank" rel="noopener">🚶 걷는 길</a>` : ''}`;
     }
-    return `<div class="card live-box stack" id="live-box" data-id="${esc(p.id)}">
-      <div class="small" style="font-weight:700;color:var(--blue)">지금 내 위치에서</div>
-      ${body}
-      <div class="btn-row">
-        <a class="btn primary" href="${gmapsDir(p, 'transit')}" target="_blank" rel="noopener">🚇 대중교통 길찾기</a>
-        <a class="btn" href="${gmapsDir(p, 'walking')}" target="_blank" rel="noopener">🚶 도보 길찾기</a>
-      </div>
-    </div>`;
+    return `<div class="live-line" id="live-box" data-id="${esc(p.id)}">${body}</div>`;
   }
 
   function openPlace(id) {
@@ -848,48 +889,57 @@
     const cw = closedWarn(p);
     const r = p.route;
     const fromLabel = p.from === 'otaru' ? '오타루역에서 가는 법' : '호텔에서 가는 법';
+    // 순서: 이름 → (고정) 가기·택시·지도 → 거리 → 설명·팁 → 핵심 정보 → 가는 법(접힘) → 일정에 넣기 → 더 알아보기
+    const more = [
+      p.address && `<dt>주소</dt><dd>${esc(p.address)}</dd>`,
+      p.phone && `<dt>전화</dt><dd><a href="tel:${esc(p.phone.replace(/[^+\d]/g, ''))}">${esc(p.phone)}</a></dd>`,
+      p.reserve && `<dt>예약</dt><dd>${p.reserve}</dd>`,
+      p.stay && `<dt>머무는 시간</dt><dd>${esc(p.stay)}</dd>`,
+    ].filter(Boolean).join('');
     openSheet(`
       <div class="d-head ${esc(p.type)}">
-        <div class="cat">${c.emoji} ${esc(c.label)} · ${esc(p.area || '')}</div>
         <h2 id="sheet-title">${esc(p.name_ko)}</h2>
-        <div class="ja">${esc(p.name_ja)}</div>
-        ${p.desc ? `<p class="d-desc">${esc(p.desc)}</p>` : ''}
+        <p class="d-sub">${c.emoji} ${esc(c.label)} · ${esc(p.area || '')}${p.rating ? ` · 타베로그 ${fmtRating(p.rating)}` : ''}</p>
+        <p class="ja">${esc(p.name_ja)}</p>
         ${cw ? `<div class="tl-meta"><span class="tag warn">⚠ ${esc(cw)}</span></div>` : ''}
       </div>
-      <div class="stack" style="margin-top:16px">
-        ${isHotel ? '' : planBoxHTML(p)}
-        ${p.tabelog ? `<a class="btn tabelog" href="${esc(p.tabelog)}" target="_blank" rel="noopener">🍴 타베로그에서 메뉴·사진 보기${p.rating ? ` <span class="score">★ ${esc(p.rating)}</span>` : ''}</a>` : ''}
+      <div class="go-bar">
+        <a class="btn primary" href="${gmapsDir(p, 'transit')}" target="_blank" rel="noopener">🧭 길찾기</a>
+        <button class="btn" data-taxi="${esc(p.id)}">🚕 택시</button>
+        <a class="btn" href="#/map?focus=${esc(p.id)}" data-close>🗺 지도</a>
+      </div>
+      <div class="stack">
         ${liveBoxHTML(p)}
-        ${r ? `<div class="card">
-          <h3 style="font-size:17px;margin-bottom:10px">🏨 ${fromLabel}</h3>
-          <div class="route-sum">${r.min ? `<span class="tag">⏱ 약 ${esc(r.min)}분</span>` : ''}${r.fare ? `<span class="tag">💴 ${esc(r.fare)}</span>` : ''}${r.taxi ? `<span class="tag">🚕 ${esc(r.taxi)}</span>` : ''}</div>
-          <ol class="route-steps">${r.steps.map((s) => `<li>${s}</li>`).join('')}</ol>
-          ${p.from !== 'otaru' && !isHotel ? `<a class="btn small" href="${gmapsDir(p, 'transit', true)}" target="_blank" rel="noopener">구글맵으로 호텔→여기 경로 보기</a>` : ''}
-        </div>` : ''}
-        <div class="card"><dl class="facts">
+        ${p.desc ? `<p class="d-desc">${esc(p.desc)}</p>` : ''}
+        ${p.tip ? `<div class="tip">💡 ${p.tip}</div>` : ''}
+        <dl class="facts card">
           ${p.menu ? `<dt>추천 메뉴</dt><dd>${esc(p.menu)}</dd>` : ''}
           ${p.price ? `<dt>예산</dt><dd>${esc(p.price)}</dd>` : ''}
+          ${p.fee ? `<dt>요금</dt><dd>${esc(p.fee)}</dd>` : ''}
           ${p.hours ? `<dt>영업시간</dt><dd>${esc(p.hours)}</dd>` : ''}
           ${p.closed ? `<dt>휴무</dt><dd>${esc(p.closed)}</dd>` : ''}
-          ${p.fee ? `<dt>요금</dt><dd>${esc(p.fee)}</dd>` : ''}
-          ${p.stay ? `<dt>머무는 시간</dt><dd>${esc(p.stay)}</dd>` : ''}
-          ${p.reserve ? `<dt>예약</dt><dd>${p.reserve}</dd>` : ''}
-          ${p.address ? `<dt>주소</dt><dd>${esc(p.address)}</dd>` : ''}
-          ${p.phone ? `<dt>전화</dt><dd><a href="tel:${esc(p.phone.replace(/[^+\d]/g, ''))}">${esc(p.phone)}</a></dd>` : ''}
-        </dl></div>
-        ${p.tip ? `<div class="tip">💡 ${p.tip}</div>` : ''}
-        <div class="btn-row">
-          <button class="btn" data-taxi="${esc(p.id)}">🚕 택시에 보여주기</button>
-          <a class="btn" href="#/map?focus=${esc(p.id)}" data-close>🗺 지도에서 보기</a>
-          <a class="btn wide" href="${gmapsPlace(p)}" target="_blank" rel="noopener">구글맵에서 리뷰·사진 보기</a>
+        </dl>
+        ${r ? `<details class="fold">
+          <summary>🏨 ${fromLabel} <span class="fold-hint">${r.min ? `약 ${esc(r.min)}분` : ''}${r.fare ? ` · ${esc(r.fare)}` : ''}</span></summary>
+          <div class="fold-body">
+            ${r.taxi ? `<p class="small muted" style="margin:0 0 10px">택시라면 ${esc(r.taxi)}</p>` : ''}
+            <ol class="route-steps">${r.steps.map((s) => `<li>${s}</li>`).join('')}</ol>
+            ${p.from !== 'otaru' && !isHotel ? `<a class="btn small" href="${gmapsDir(p, 'transit', true)}" target="_blank" rel="noopener">구글맵으로 호텔→여기 경로 보기</a>` : ''}
+          </div>
+        </details>` : ''}
+        ${more ? `<details class="fold"><summary>📋 주소·전화·예약</summary><div class="fold-body"><dl class="facts">${more}</dl></div></details>` : ''}
+        ${isHotel ? '' : planBoxHTML(p)}
+        <div class="link-row">
+          ${p.tabelog ? `<a href="${esc(p.tabelog)}" target="_blank" rel="noopener">🍴 타베로그 메뉴·사진</a>` : ''}
+          <a href="${gmapsPlace(p)}" target="_blank" rel="noopener">⭐ 구글맵 리뷰·사진</a>
         </div>
       </div>`);
   }
   function planBoxHTML(p) {
     const days = plannedDays(p.id);
     return `<div class="card plan-box" id="plan-box" data-id="${esc(p.id)}">
-      <div class="small" style="font-weight:700">📅 내 일정에 넣기 <span class="muted" style="font-weight:400">(한 번 더 누르면 빠져요)</span></div>
-      <div class="btn-row three">${DAYS.map((d, i) => `<button class="btn small ${days.includes(i) ? 'on' : ''}" data-toggle-day="${i}" data-id="${esc(p.id)}" aria-pressed="${days.includes(i)}">${days.includes(i) ? '✓ ' : ''}${esc(d.label)}<br><span class="small">${esc(d.dateLabel.split(' ')[0])}</span></button>`).join('')}</div>
+      <p class="plan-box-title">📅 내 일정에 넣기 <span class="muted">(한 번 더 누르면 빠져요)</span></p>
+      <div class="btn-row three">${DAYS.map((d, i) => `<button class="btn stacked ${days.includes(i) ? 'on' : ''}" data-toggle-day="${i}" data-id="${esc(p.id)}" aria-pressed="${days.includes(i)}"><span>${days.includes(i) ? '✓ ' : ''}${esc(d.label)}</span><small>${esc(d.dateLabel.split(' ')[0])}</small></button>`).join('')}</div>
     </div>`;
   }
   function openSheet(html) {
@@ -898,6 +948,9 @@
     $('#sheet-backdrop').hidden = false;
     $('#sheet').scrollTop = 0;
     document.body.style.overflow = 'hidden';
+    // 화면 읽기·키보드 사용자를 위해 시트 제목으로 초점 이동
+    const title = $('#sheet-title');
+    if (title) { title.setAttribute('tabindex', '-1'); title.focus({ preventScroll: true }); }
   }
   let toastTimer;
   function toast(msg) {
@@ -959,6 +1012,8 @@
   const markers = {};
   function initMap() {
     if (map || typeof L === 'undefined') return;
+    // 일정이 있으면 처음엔 내 일정 장소만 보여서 핀이 덜 복잡하게
+    if (plan.days.some((d) => d.some((it) => it.place))) state.mapFilter = 'plan';
     map = L.map('map', { zoomControl: false }).setView([HOTEL.lat, HOTEL.lng], 14);
     L.control.zoom({ position: 'bottomleft' }).addTo(map);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -968,7 +1023,7 @@
     for (const p of [HOTEL, ...PLACES]) {
       const kind = p.id === 'hotel' ? 'hotel' : p.type;
       const icon = L.divIcon({ className: '', html: `<div class="pin ${kind}"><span>${p.id === 'hotel' ? '🏨' : catOf(p).emoji}</span></div>`, iconSize: [34, 34], iconAnchor: [17, 34], popupAnchor: [0, -30] });
-      const m = L.marker([p.lat, p.lng], { icon, zIndexOffset: p.id === 'hotel' ? 1000 : 0 }).addTo(map);
+      const m = L.marker([p.lat, p.lng], { icon, title: p.name_ko, alt: p.name_ko, zIndexOffset: p.id === 'hotel' ? 1000 : 0 }).addTo(map);
       m.bindPopup(() => `<b>${esc(p.name_ko)}</b><div class="small muted">${esc(p.name_ja)}</div>
         <div class="small" data-dist="${esc(p.id)}">${esc(distLabel(p))}</div>
         <div class="pop-actions"><button class="btn small primary" data-open="${esc(p.id)}">자세히</button>
@@ -1003,7 +1058,7 @@
   $('#btn-locate').addEventListener('click', () => {
     startWatch();
     if (state.pos && inHokkaido(state.pos)) map.setView([state.pos.lat, state.pos.lng], 16);
-    else if (state.pos) { alert('지금은 삿포로 밖이에요. 호텔 위치를 보여드릴게요.'); map.setView([HOTEL.lat, HOTEL.lng], 15); }
+    else if (state.pos) { toast('지금은 삿포로 밖이라 호텔 위치를 보여 드릴게요'); map.setView([HOTEL.lat, HOTEL.lng], 15); }
   });
   function showMap(focusId) {
     $('#map-wrap').hidden = false;
@@ -1031,7 +1086,11 @@
     let [tab, arg] = path.split('/');
     if (PLACE_TYPES[tab]) { arg = PLACE_TYPES[tab]; tab = 'places'; }
     const params = new URLSearchParams(query || '');
-    document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === (titles[tab] ? tab : 'plan')));
+    document.querySelectorAll('.tabbar a').forEach((a) => {
+      const on = a.dataset.tab === (titles[tab] ? tab : 'plan');
+      a.classList.toggle('active', on);
+      if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    });
     $('#page-title').textContent = titles[tab] || titles.plan;
     if (tab === 'import') { $('#map-wrap').hidden = true; view.hidden = false; renderPlan(); showImport(params.get('d')); return; }
     if (tab === 'map') { showMap(params.get('focus')); refreshLive(); return; }
@@ -1050,7 +1109,9 @@
   // 스크롤 위치를 지키면서 현재 화면만 다시 그리기
   function rerender() {
     const y = window.scrollY;
+    state.keepScroll = true;
     route();
+    state.keepScroll = false;
     window.scrollTo(0, y);
     if (map && !$('#map-wrap').hidden) applyMapFilter();
   }
@@ -1064,9 +1125,16 @@
     const t = e.target.closest('[data-open],[data-taxi],[data-day],[data-cat],[data-sort],[data-geo],[data-mapf],[data-phrase],[data-close],[data-confirm],'
       + '[data-toggle-day],[data-pick],[data-pickf],[data-picker],[data-memo-form],[data-edit],[data-sort-time],[data-move],[data-del],'
       + '[data-share],[data-import-rec],[data-import-accept],[data-clear],[data-close-sheet],'
-      + '[data-send-loc],[data-jump],[data-jump-later],[data-taxi-text],[data-fx-swap],[data-fx-quick],[data-sec-all],[data-shop-del],[data-shop-rec],[data-shop-hide]');
+      + '[data-send-loc],[data-bigtext],[data-sos-phrase],[data-jump],[data-jump-later],[data-taxi-text],[data-fx-swap],[data-fx-quick],[data-sec-all],[data-shop-del],[data-shop-rec],[data-shop-hide]');
     if (!t || t.disabled) return;
     if (t.hasAttribute('data-send-loc')) { sendMyLocation(); return; }
+    if (t.hasAttribute('data-bigtext')) { toggleBigText(); return; }
+    if (t.dataset.sosPhrase != null) {
+      const p = SOS_PHRASES[Number(t.dataset.sosPhrase)];
+      $('#showcard-inner').innerHTML = `<div class="sc-name" style="font-size:44px">${esc(p.ja)}</div><div class="sc-ko" style="font-size:20px">${esc(p.ko)} · ${esc(p.rd)}</div>`;
+      $('#showcard').hidden = false;
+      return;
+    }
     if (t.dataset.jump) { jumpToSection(t.dataset.jump); return; }
     if (t.dataset.jumpLater) { state.jumpTo = t.dataset.jumpLater; return; } // #/info로 이동한 뒤 그 섹션을 열기
     if (t.dataset.taxiText) { showTaxiText(t.dataset.taxiText); return; }
@@ -1080,7 +1148,7 @@
       state.fxVal = t.dataset.fxQuick;
       const inp = $('[data-fx-in]');
       if (inp) inp.value = Number(state.fxVal).toLocaleString('ko-KR');
-      $('#fx-out').textContent = fxResult(Number(state.fxVal));
+      $('#fx-out').textContent = fxResult(Number(state.fxVal)); $('#fx-out').classList.remove('empty');
       return;
     }
     if (t.dataset.secAll != null) {
@@ -1183,8 +1251,8 @@
     if (t.dataset.day != null) { state.day = Number(t.dataset.day); renderPlan(state.day); refreshLive(); return; }
     if (t.dataset.cat) { state[t.dataset.key] = t.dataset.cat; renderList(t.dataset.key.replace(/Cat$/, '')); refreshLive(); return; }
     if (t.hasAttribute('data-sort')) {
-      if (!state.pos) { startWatch(); alert('내 위치를 켜는 중이에요. 위치가 잡히면 다시 눌러 주세요.'); return; }
-      if (!inHokkaido(state.pos)) { alert('삿포로에 도착하면 가까운 순으로 볼 수 있어요.'); return; }
+      if (!state.pos) { startWatch(); toast('내 위치를 켜는 중이에요. 잡히면 다시 눌러 주세요'); return; }
+      if (!inHokkaido(state.pos)) { toast('삿포로에 도착하면 가까운 순으로 볼 수 있어요'); return; }
       state.sortNear = !state.sortNear; route(); return;
     }
     if (t.hasAttribute('data-geo')) { startWatch(); return; }
@@ -1199,7 +1267,7 @@
       const digits = e.target.value.replace(/[^\d]/g, '').slice(0, 9);
       state.fxVal = digits;
       e.target.value = digits ? Number(digits).toLocaleString('ko-KR') : '';
-      $('#fx-out').textContent = digits ? fxResult(Number(digits)) : '가격표 숫자를 넣어 보세요';
+      $('#fx-out').textContent = digits ? fxResult(Number(digits)) : '가격표 숫자를 넣어 보세요'; $('#fx-out').classList.toggle('empty', !digits);
     }
   });
   document.addEventListener('submit', (e) => {
@@ -1276,29 +1344,52 @@
     });
   }
 
-  // 글씨 크게 보기: 본문과 상세 화면만 키우고(지도는 그대로) 설정은 휴대폰에 기억
-  const txtBtn = $('#txt-btn');
+  // 글씨 크게 보기: 머리글·본문·상세 창·하단 탭까지 키우고(지도는 그대로) 설정은 휴대폰에 기억
+  const isBig = () => document.documentElement.classList.contains('big');
   function applyBigText(on) {
     document.documentElement.classList.toggle('big', on);
-    txtBtn.setAttribute('aria-pressed', on);
-    txtBtn.setAttribute('aria-label', on ? '글씨 원래대로' : '글씨 크게 보기');
+    setHeaderH();
   }
-  txtBtn.addEventListener('click', () => {
-    const on = !document.documentElement.classList.contains('big');
+  function toggleBigText() {
+    const on = !isBig();
     store.set('bigText', on);
     applyBigText(on);
-    toast(on ? '글씨를 크게 했어요' : '글씨를 원래대로 했어요');
-  });
+    toast(on ? '글씨를 크게 했어요' : '글씨를 원래 크기로 했어요');
+    if (/^#\/info/.test(location.hash)) rerender();
+  }
+
+  // 긴급: 머리글의 SOS 버튼 → 큰 전화 버튼과 내 위치 보내기를 한 창에
+  function openSOS() {
+    const calls = [
+      { label: '구급차·소방', sub: '119 · 다쳤거나 몸이 아플 때', tel: '119', main: true },
+      { label: '경찰', sub: '110 · 도난·분실·사고', tel: '110', main: true },
+      { label: '영사콜센터 (24시간)', sub: '+82-2-3210-0404 · 한국어 상담', tel: '+82232100404' },
+      { label: '주삿포로 총영사관', sub: '011-218-0288 · 여권 분실', tel: '+81112180288' },
+      { label: '호텔', sub: `${HOTEL.phone} · ${HOTEL.name_ko}`, tel: HOTEL.phone.replace(/[^+\d]/g, '').replace(/^0/, '+81') },
+    ];
+    openSheet(`<div class="d-head"><h2 id="sheet-title">도움이 필요하세요?</h2><p class="d-sub">누르면 바로 전화가 걸려요.</p></div>
+      <div class="sos-list">${calls.map((c) => `<a class="sos-call${c.main ? ' main' : ''}" href="tel:${esc(c.tel)}"><b>${esc(c.label)}</b><span>${esc(c.sub)}</span></a>`).join('')}</div>
+      <div class="btn-row" style="margin-top:12px">
+        <button class="btn primary" data-send-loc>📤 내 위치 보내기</button>
+        <button class="btn" data-taxi="hotel">🚕 호텔로 택시</button>
+      </div>
+      <div class="sos-phrases">
+        <button class="phrase-btn" data-sos-phrase="0"><b>助けてください</b><span>도와주세요 · 타스케테 쿠다사이</span></button>
+        <button class="phrase-btn" data-sos-phrase="1"><b>救急車を呼んでください</b><span>구급차를 불러 주세요 · 큐-큐-샤오 욘데 쿠다사이</span></button>
+      </div>`);
+  }
+  const SOS_PHRASES = [
+    { ja: '助けてください', ko: '도와주세요', rd: '타스케테 쿠다사이' },
+    { ja: '救急車を呼んでください', ko: '구급차를 불러 주세요', rd: '큐-큐-샤오 욘데 쿠다사이' },
+  ];
+  $('#sos-btn').addEventListener('click', openSOS);
 
   /* ---------------- 시작 ---------------- */
+  // 상단 고정 영역(둘러보기 전환 바, 지도)이 헤더 바로 아래에 붙도록 헤더 높이를 기억
+  function setHeaderH() { document.documentElement.style.setProperty('--header-h', `${$('.top').offsetHeight}px`); }
   applyBigText(store.get('bigText', false));
   inAppBanner();
-  // 상단 고정 영역(둘러보기 전환 바, 지도)이 헤더 바로 아래에 붙도록 헤더 높이를 기억
-  const setHeaderH = () => document.documentElement.style.setProperty('--header-h', `${$('.top').offsetHeight}px`);
-  setHeaderH();
   window.addEventListener('resize', setHeaderH);
-  const dd = dday();
-  $('#dday').textContent = dd > 0 ? `결혼기념일 여행 · D-${dd}` : currentDayIndex() >= 0 ? `결혼기념일 여행 · ${DAYS[currentDayIndex()].label}` : '결혼기념일 여행';
   route();
   updatePill();
   // 예전에 위치를 허용했으면 자동으로 켜기

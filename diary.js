@@ -418,7 +418,7 @@
         ? `<p class="small muted" style="margin:12px 0 8px">${st.picking ? '지울 사진을 눌러 고르세요.' : `사진 ${dayPhotos.length}장 · 사진을 누르면 크게 보거나, 다른 날로 옮기거나, 콜라주에서 뺄 수 있어요.`}</p><div class="photo-grid">${grid}</div>`
         : `<div class="empty card" style="margin-top:12px"><div style="font-size:36px">📷</div><h3>${esc(DAYS[st.day].label)} 사진이 아직 없어요</h3><p class="muted">찍은 날짜를 보고 알아서 날짜별로 나눠 넣어 드려요.</p></div>`}
 
-      <h2 class="section-title">🎨 콜라주 만들기</h2>
+      ${st.photos.length ? `<h2 class="section-title">🎨 콜라주 만들기</h2>
       <div class="card stack collage-card">
         <div><div class="small muted">무엇으로</div><div class="filters">${chip('scope', 'day', `${esc(DAYS[st.day].label)} 사진`)}${chip('scope', 'trip', '여행 전체')}</div></div>
         <div><div class="small muted">모양</div><div class="filters">${chip('style', 'mosaic', '🧩 모자이크')}${chip('style', 'polaroid', '📷 폴라로이드')}${chip('style', 'film', '🎞 필름')}</div></div>
@@ -430,15 +430,15 @@
         <p class="small muted" style="margin:0">${inCollage ? `사진 ${inCollage}장이 들어가요 (최대 ${MAX_IN_COLLAGE}장, 많으면 골고루 골라요).` : '먼저 사진을 올려 주세요.'}</p>
         ${st.collageUrl ? `<img class="collage-preview" src="${st.collageUrl}" alt="만든 콜라주">
           <button class="btn primary" data-csave style="width:100%">💾 사진첩에 저장 · 카톡 공유</button>` : ''}
-      </div>
+      </div>` : ''}
       <p class="small muted" style="margin-top:20px">💡 홈 화면에 추가해서 쓰면 사진이 더 안전하게 보관돼요. 만든 콜라주는 저장해 두세요.</p>`;
   }
 
   function openPhoto(id) {
     const p = st.photos.find((x) => x.id === id);
     if (!p) return;
-    openSheet(`<div class="d-head"><div class="cat">📷 ${esc(DAYS[p.day] ? DAYS[p.day].label : '')}</div>
-        <h2 id="sheet-title">${esc(p.time || '사진')}</h2></div>
+    openSheet(`<div class="d-head"><h2 id="sheet-title">${esc(DAYS[p.day] ? DAYS[p.day].label : '')} 사진</h2>
+        ${p.time ? `<p class="d-sub">📷 ${esc(p.time)}에 찍음</p>` : ''}</div>
       <img class="ph-big" src="${urlOf(p)}" alt="">
       <div class="small muted" style="margin:14px 0 6px">다른 날로 옮기기</div>
       <div class="btn-row three">${DAYS.map((d, i) => `<button class="btn small ${i === p.day ? 'on' : ''}" data-pmove="${p.id}" data-to="${i}">${esc(d.label)}</button>`).join('')}</div>
