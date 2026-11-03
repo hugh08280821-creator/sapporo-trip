@@ -254,8 +254,11 @@
   function togglePlace(placeId, dayIdx) {
     const day = plan.days[dayIdx];
     const i = day.findIndex((it) => it.place === placeId);
-    if (i >= 0) { day.splice(i, 1); toast(`${DAYS[dayIdx].label} 일정에서 뺐어요`); }
-    else { day.push({ uid: newUid(), place: placeId }); toast(`${DAYS[dayIdx].label} 일정에 넣었어요 ✓`); }
+    if (i >= 0) {
+      // 뺀 항목은 시간·메모까지 그대로 되돌릴 수 있게
+      const [removed] = day.splice(i, 1);
+      toast(`${DAYS[dayIdx].label} 일정에서 뺐어요`, () => { day.splice(i, 0, removed); savePlan(); refreshPlanViews(); });
+    } else { day.push({ uid: newUid(), place: placeId }); toast(`${DAYS[dayIdx].label} 일정에 넣었어요 ✓`); }
     savePlan();
   }
   // 결혼기념일 디너는 따로 표시 (예전에 불러온 일정은 메모 문구로 알아봄)
@@ -953,14 +956,36 @@
     if (title) { title.setAttribute('tabindex', '-1'); title.focus({ preventScroll: true }); }
   }
   let toastTimer;
-  function toast(msg) {
+  // 알림. undo를 넘기면 「되돌리기」 버튼을 달고 더 오래(7초) 보여 줌
+  function toast(msg, undo) {
     let t = $('#toast');
     if (!t) { t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; t.setAttribute('role', 'status'); document.body.appendChild(t); }
-    t.textContent = msg;
+    t.textContent = '';
+    const text = document.createElement('span');
+    text.textContent = msg;
+    t.appendChild(text);
+    t.classList.toggle('has-action', !!undo);
+    if (undo) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'toast-btn';
+      b.textContent = '되돌리기';
+      b.addEventListener('click', () => { clearTimeout(toastTimer); t.classList.remove('show'); undo(); toast('되돌렸어요'); });
+      t.appendChild(b);
+    }
     t.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+    toastTimer = setTimeout(() => t.classList.remove('show'), undo ? 7000 : 3500);
   }
+  // 일정이 바뀐 뒤 열려 있는 창이나 화면을 다시 그리기
+  function refreshPlanViews() {
+    const box = $('#plan-box');
+    if (box) box.outerHTML = planBoxHTML(byId[box.dataset.id]);
+    const pick = $('#pick-list');
+    if (pick) pick.innerHTML = pickerListHTML();
+    if ($('#sheet').hidden) rerender(); else state.dirty = true;
+  }
+  const clonePlanDays = () => JSON.parse(JSON.stringify(plan.days));
   // 브라우저 기본 확인창은 카톡 인앱 브라우저 등에서 뜨지 않고 '취소'로 처리되므로 앱 안에서 직접 묻기
   let confirmResolve = null;
   function askConfirm(message, okLabel = '확인', danger = false) {
@@ -1159,10 +1184,11 @@
       return;
     }
     if (t.dataset.shopDel) {
-      const item = shop.find((x) => x.uid === t.dataset.shopDel);
-      shop = shop.filter((x) => x !== item);
+      const idx = shop.findIndex((x) => x.uid === t.dataset.shopDel);
+      if (idx < 0) return;
+      const [item] = shop.splice(idx, 1);
       saveShop(); rerenderShop();
-      if (item) toast(`「${item.name}」 항목을 지웠어요`);
+      toast(`「${item.name}」 항목을 지웠어요`, () => { shop.splice(idx, 0, item); saveShop(); if (/^#\/info/.test(location.hash)) rerenderShop(); });
       return;
     }
     if (t.dataset.shopRec) {
@@ -1212,7 +1238,11 @@
     }
     if (t.dataset.del) {
       const [d, i] = findItem(t.dataset.del);
-      if (d) { d.splice(i, 1); savePlan(); rerender(); toast('일정에서 지웠어요'); }
+      if (d) {
+        const [item] = d.splice(i, 1);
+        savePlan(); rerender();
+        toast(`「${item.place && byId[item.place] ? byId[item.place].name_ko : item.title}」 일정을 지웠어요`, () => { d.splice(i, 0, item); savePlan(); rerender(); });
+      }
       return;
     }
     if (t.hasAttribute('data-share')) { sharePlan(); return; }
@@ -1220,7 +1250,9 @@
       const has = plan.days.some((d) => d.length);
       (has ? askConfirm('지금 일정이 추천 일정으로 바뀌어요. 괜찮으세요?', '바꾸기') : Promise.resolve(true)).then((ok) => {
         if (!ok) return;
-        plan.days = recommendedPlan(); savePlan(); state.day = 0; rerender(); toast('추천 일정을 불러왔어요');
+        const prev = clonePlanDays();
+        plan.days = recommendedPlan(); savePlan(); state.day = 0; rerender();
+        toast('추천 일정을 불러왔어요', has ? () => { plan.days = prev; savePlan(); rerender(); } : undefined);
       });
       return;
     }
@@ -1243,7 +1275,10 @@
     }
     if (t.hasAttribute('data-clear')) {
       askConfirm('3일 일정을 모두 지울까요?', '모두 지우기', true).then((ok) => {
-        if (ok) { plan.days = DAYS.map(() => []); savePlan(); state.editing = false; rerender(); }
+        if (!ok) return;
+        const prev = clonePlanDays();
+        plan.days = DAYS.map(() => []); savePlan(); state.editing = false; rerender();
+        toast('일정을 모두 지웠어요', () => { plan.days = prev; savePlan(); rerender(); });
       });
       return;
     }
@@ -1367,16 +1402,24 @@
       { label: '주삿포로 총영사관', sub: '011-218-0288 · 여권 분실', tel: '+81112180288' },
       { label: '호텔', sub: `${HOTEL.phone} · ${HOTEL.name_ko}`, tel: HOTEL.phone.replace(/[^+\d]/g, '').replace(/^0/, '+81') },
     ];
+    const callHTML = (c) => `<a class="sos-call${c.main ? ' main' : ''}" href="tel:${esc(c.tel)}"><b>${esc(c.label)}</b><span>${esc(c.sub)}</span></a>`;
+    // 급할 때 쓸 119·110과 위치 보내기만 크게, 나머지는 접어 둠
     openSheet(`<div class="d-head"><h2 id="sheet-title">도움이 필요하세요?</h2><p class="d-sub">누르면 바로 전화가 걸려요.</p></div>
-      <div class="sos-list">${calls.map((c) => `<a class="sos-call${c.main ? ' main' : ''}" href="tel:${esc(c.tel)}"><b>${esc(c.label)}</b><span>${esc(c.sub)}</span></a>`).join('')}</div>
+      <div class="sos-list">${calls.filter((c) => c.main).map(callHTML).join('')}</div>
       <div class="btn-row" style="margin-top:12px">
         <button class="btn primary" data-send-loc>📤 내 위치 보내기</button>
         <button class="btn" data-taxi="hotel">🚕 호텔로 택시</button>
       </div>
-      <div class="sos-phrases">
-        <button class="phrase-btn" data-sos-phrase="0"><b>助けてください</b><span>도와주세요 · 타스케테 쿠다사이</span></button>
-        <button class="phrase-btn" data-sos-phrase="1"><b>救急車を呼んでください</b><span>구급차를 불러 주세요 · 큐-큐-샤오 욘데 쿠다사이</span></button>
-      </div>`);
+      <details class="fold sos-more">
+        <summary>📞 영사관·호텔 전화, 일본어 문장</summary>
+        <div class="fold-body">
+          <div class="sos-list">${calls.filter((c) => !c.main).map(callHTML).join('')}</div>
+          <div class="sos-phrases">
+            <button class="phrase-btn" data-sos-phrase="0"><b>助けてください</b><span>도와주세요 · 타스케테 쿠다사이</span></button>
+            <button class="phrase-btn" data-sos-phrase="1"><b>救急車を呼んでください</b><span>구급차를 불러 주세요 · 큐-큐-샤오 욘데 쿠다사이</span></button>
+          </div>
+        </div>
+      </details>`);
   }
   const SOS_PHRASES = [
     { ja: '助けてください', ko: '도와주세요', rd: '타스케테 쿠다사이' },
