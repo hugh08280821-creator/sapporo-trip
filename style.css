@@ -656,3 +656,48 @@ html.big .daytab { padding: 10px 4px; }
 html.big .top h1 { font-size: 20px; }
 html.big .loc-pill { max-width: 34vw; }
 html.big .loc-pill { font-size: 14px; }
+
+/* ---------- 택시 예상 요금 ---------- */
+.live-fare { display: block; margin-top: 2px; font-size: calc(14px * var(--fs)); color: var(--ink-2); }
+.hero-fare { margin: 10px 0 0; font-size: calc(15px * var(--fs)); color: #d9e0ee; }
+
+/* ---------- 깜짝 메시지 ---------- */
+.surprise {
+  display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; cursor: pointer;
+  margin: -4px 0 14px; padding: 14px 16px; border-radius: var(--radius);
+  background: var(--gold-soft); border: 1.5px dashed var(--gold-line); color: var(--ink);
+}
+.surprise .env { font-size: calc(30px * var(--fs)); line-height: 1; }
+.surprise b { display: block; font-size: calc(17px * var(--fs)); }
+.surprise small { display: block; font-size: calc(15px * var(--fs)); color: var(--ink-2); }
+.surprise.open { border-style: solid; border-color: var(--gold); box-shadow: 0 0 0 4px rgba(212, 162, 76, .18); }
+.letter { padding: 6px 4px 10px; }
+.letter-title { font-size: calc(22px * var(--fs)); margin: 4px 56px 16px 0; }
+.letter-body {
+  background: #fffaf0; color: #2b2418; border: 1px solid #ecdcb8; border-radius: var(--radius);
+  padding: 20px 18px; font-size: calc(19px * var(--fs)); line-height: 1.85; box-shadow: var(--shadow);
+}
+.letter-from { text-align: right; margin: 12px 4px 0; font-weight: 700; font-size: calc(17px * var(--fs)); color: var(--gold-text); }
+.memo-form select { font: inherit; font-size: calc(17px * var(--fs)); padding: 11px 12px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); color: var(--ink); }
+.memo-form textarea { font: inherit; font-size: calc(17px * var(--fs)); padding: 11px 12px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); color: var(--ink); resize: vertical; }
+
+/* ---------- 근처 찾기 ---------- */
+.nearby-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.nearby {
+  display: grid; justify-items: center; gap: 2px; text-align: center; cursor: pointer;
+  min-height: 96px; padding: 10px 6px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line-strong); color: var(--ink);
+}
+.nb-emo { font-size: calc(26px * var(--fs)); line-height: 1.2; }
+.nearby b { font-size: calc(16px * var(--fs)); }
+.nearby small { font-size: calc(12.5px * var(--fs)); color: var(--ink-3); line-height: 1.35; }
+html.big .nearby-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* ---------- 메뉴판 단어장 ---------- */
+.word-group { font-size: calc(16px * var(--fs)); font-weight: 750; margin: 16px 2px 8px; color: var(--ink-2); }
+.word-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.word {
+  display: grid; gap: 1px; text-align: left; cursor: pointer; min-height: 60px;
+  padding: 8px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); color: var(--ink);
+}
+.word b { font-size: calc(19px * var(--fs)); font-weight: 700; }
+.word span { font-size: calc(14px * var(--fs)); color: var(--ink-2); line-height: 1.35; }
