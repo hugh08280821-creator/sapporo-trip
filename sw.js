@@ -1,5 +1,5 @@
 // 오프라인에서도 일정·맛집 정보를 볼 수 있도록 캐시
-const VERSION = 'sapporo-v15';
+const VERSION = 'sapporo-v16';
 const SHELL = [
   './', 'index.html', 'style.css', 'app.js', 'diary.js', 'data.js', 'extra.js', 'manifest.webmanifest', 'icon.svg',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
@@ -7,7 +7,8 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // 새 버전을 받을 때는 브라우저 캐시를 건너뛰고 서버에서 바로 받기
+  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -37,9 +38,12 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // 앱 파일: 네트워크 우선(최신 정보), 안 되면 캐시
+  // 앱 파일: 네트워크 우선(최신 정보), 안 되면 캐시.
+  // 같은 사이트 파일은 브라우저 캐시(GitHub Pages는 10분)를 쓰지 말고 서버에 바뀌었는지 확인
+  const same = url.origin === location.origin;
+  const net = same ? fetch(req.mode === 'navigate' ? req.url : req, { cache: 'no-cache' }) : fetch(req);
   e.respondWith(
-    fetch(req)
+    net
       .then((res) => {
         if (res.ok && (url.origin === location.origin || SHELL.includes(req.url))) {
           const copy = res.clone();

@@ -1571,6 +1571,18 @@
     }
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    // 새 버전이 올라오면 sw.js를 캐시 없이 확인하고, 바뀌었으면 한 번만 새로고침해서 최신 화면으로
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController && !reloaded) { reloaded = true; location.reload(); }
+    });
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+      .then((reg) => {
+        reg.update().catch(() => {});
+        // 앱을 켜 둔 채로 다시 보면(홈 화면 앱 복귀 등) 새 버전 확인
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+      })
+      .catch(() => {});
   }
 })();
