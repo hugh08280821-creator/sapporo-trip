@@ -218,10 +218,21 @@
 
   // 타베로그 평점은 소수 둘째 자리까지 같은 모양으로
   const fmtRating = (r) => Number(r).toFixed(2);
+  // 대표 사진(위키미디어 공용, 자유 이용 사진). 못 불러오면 사진만 숨기고 아이콘을 그대로 보여 줌
+  const imgFail = `onerror="this.remove()"`;
+  function photoFigHTML(p) {
+    const ph = p.photo;
+    const more = p.type === 'photo' ? `<a href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent(p.name_ja.split(/[（(]/)[0].trim())}" target="_blank" rel="noopener">구글에서 사진 더 보기</a>` : '';
+    if (!ph) return more ? `<p class="small" style="margin:0">📷 ${more}</p>` : '';
+    return `<figure class="d-photo">
+      <img src="${esc(ph.img)}" alt="${esc(ph.what || p.name_ko)}" width="${esc(ph.w)}" height="${esc(ph.h)}" decoding="async" crossorigin="anonymous" onerror="this.closest('figure').classList.add('broken')">
+      <figcaption><span>${esc(ph.what || '')}${ph.what ? ' · ' : ''}사진 <a href="${esc(ph.file)}" target="_blank" rel="noopener">${esc(ph.author)}, ${esc(ph.license)}</a></span>${more}</figcaption>
+    </figure>`;
+  }
   function placeCard(p) {
     const cw = closedWarn(p);
     return `<button type="button" class="pcard" data-open="${esc(p.id)}">
-      <span class="emoji" aria-hidden="true">${catOf(p).emoji}</span>
+      <span class="emoji${p.photo ? ' has-img' : ''}" aria-hidden="true">${catOf(p).emoji}${p.photo ? `<img src="${esc(p.photo.img.replace('/960px-', '/250px-'))}" alt="" decoding="async" crossorigin="anonymous" ${imgFail}>` : ''}</span>
       <span>
         <h3>${esc(p.name_ko)}</h3>
         <div class="ja">${esc(p.name_ja)} · ${esc(p.area)}</div>
@@ -1010,6 +1021,7 @@
         <a class="btn" href="#/map?focus=${esc(p.id)}" data-close>🗺 지도</a>
       </div>
       <div class="stack">
+        ${photoFigHTML(p)}
         ${liveBoxHTML(p)}
         ${p.desc ? `<p class="d-desc">${esc(p.desc)}</p>` : ''}
         ${p.tip ? `<div class="tip">${p.type === 'photo' ? '📸 <b>이렇게 찍어 보세요</b> ' : '💡 '}${p.tip}</div>` : ''}
@@ -1143,7 +1155,7 @@
     map = L.map('map', { zoomControl: false }).setView([HOTEL.lat, HOTEL.lng], 14);
     L.control.zoom({ position: 'bottomleft' }).addTo(map);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, subdomains: 'abc',
+      maxZoom: 19, subdomains: 'abc', crossOrigin: true, // 오프라인 저장이 되도록 CORS로 받기
       attribution: '&copy; OpenStreetMap',
     }).addTo(map);
     for (const p of [HOTEL, ...PLACES]) {

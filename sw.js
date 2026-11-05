@@ -1,7 +1,7 @@
 // 오프라인에서도 일정·맛집 정보를 볼 수 있도록 캐시
-const VERSION = 'sapporo-v17';
+const VERSION = 'sapporo-v18';
 const SHELL = [
-  './', 'index.html', 'style.css', 'app.js', 'diary.js', 'data.js', 'extra.js', 'manifest.webmanifest', 'icon.svg',
+  './', 'index.html', 'style.css', 'app.js', 'diary.js', 'data.js', 'extra.js', 'photos.js', 'manifest.webmanifest', 'icon.svg',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
 ];
@@ -14,7 +14,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== VERSION && k !== 'tiles').map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== VERSION && k !== 'tiles' && k !== 'imgs').map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -24,10 +24,10 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // 지도 타일: 한 번 본 곳은 저장해 두고 재사용
-  if (url.hostname.endsWith('tile.openstreetmap.org')) {
+  // 지도 타일·포토스팟 사진: 한 번 본 것은 저장해 두고 재사용 (사진은 오프라인에서도 보이게)
+  if (url.hostname.endsWith('tile.openstreetmap.org') || url.hostname.endsWith('.wikimedia.org')) {
     e.respondWith(
-      caches.open('tiles').then(async (c) => {
+      caches.open(url.hostname.endsWith('.wikimedia.org') ? 'imgs' : 'tiles').then(async (c) => {
         const hit = await c.match(req);
         if (hit) return hit;
         const res = await fetch(req);
