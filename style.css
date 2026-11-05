@@ -25,6 +25,8 @@
   --cat-food: #b14a22;
   --cat-sight: #2a5f9e;
   --cat-cafe: #7a4a2e;
+  --cat-shop: #7a3f8f;
+  --cat-photo: #a8325e;
   --cat-hotel: #c8963e;
   --sel-bg: var(--navy);     /* 선택된 버튼·탭 */
   --sel-ink: #ffffff;
@@ -61,6 +63,8 @@
     --cat-food: #f0a07c;
     --cat-sight: #93b8ec;
     --cat-cafe: #d9ad8c;
+    --cat-shop: #d3a6e3;
+    --cat-photo: #f2a0bd;
     --sel-bg: #e9c983;       /* 어두운 화면에선 금색으로 선택 표시 (남색은 배경과 구분이 안 됨) */
     --sel-ink: #14213a;
     --sel-sub: #3f3417;
@@ -140,6 +144,7 @@ main { max-width: 720px; margin: 0 auto; padding: 16px 16px 28px; }
 }
 .stack > * + * { margin-top: 12px; }
 .tip { background: var(--gold-soft); border-radius: var(--radius-sm); padding: 12px 14px; font-size: calc(16px * var(--fs)); line-height: 1.6; }
+.tip.caution { background: var(--red-soft); }
 
 /* 여행 머리 카드 — 밤하늘에 일루미네이션 불빛 */
 .hero {
@@ -234,17 +239,19 @@ label.btn input[hidden] { display: none; }
 /* ---------- 둘러보기 ---------- */
 .segbar {
   position: sticky; top: var(--header-h, 64px); z-index: 400;
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
-  margin: -16px -16px 14px; padding: 10px 16px;
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px;
+  margin: -16px -16px 14px; padding: 10px 12px;
   background: var(--bg); border-bottom: 1px solid var(--line);
 }
 .seg {
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  min-height: 48px; border-radius: 12px; text-decoration: none;
-  color: var(--ink-2); font-weight: 750; font-size: calc(17px * var(--fs));
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  min-height: 58px; padding: 4px 2px; border-radius: 12px; text-decoration: none; text-align: center;
+  color: var(--ink-2); font-weight: 750; font-size: calc(15px * var(--fs)); line-height: 1.15;
+  word-break: keep-all; overflow-wrap: anywhere;
   background: var(--surface); border: 1px solid var(--line);
 }
-.seg em { font-style: normal; font-size: calc(14px * var(--fs)); font-weight: 650; color: var(--ink-3); }
+.seg span { font-size: 20px; line-height: 1.1; }
+.seg em { font-style: normal; font-size: calc(12.5px * var(--fs)); font-weight: 650; color: var(--ink-3); }
 .seg[aria-current="page"] { background: var(--sel-bg); border-color: var(--sel-bg); color: var(--sel-ink); }
 .seg[aria-current="page"] em { color: var(--sel-sub); }
 .sortbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
@@ -379,6 +386,8 @@ div.pi-row { cursor: default; }
 .d-head.food .d-sub { color: var(--cat-food); }
 .d-head.sight .d-sub { color: var(--cat-sight); }
 .d-head.cafe .d-sub { color: var(--cat-cafe); }
+.d-head.shop .d-sub { color: var(--cat-shop); }
+.d-head.photo .d-sub { color: var(--cat-photo); }
 .d-head .ja { margin: 2px 0 0; font-size: calc(15px * var(--fs)); color: var(--ink-3); }
 .d-desc { margin: 0; color: var(--ink-2); font-size: calc(17px * var(--fs)); line-height: 1.65; }
 /* 가장 먼저 할 일: 가기·택시·지도 — 스크롤해도 위에 붙어 있음 */
@@ -478,6 +487,8 @@ div.pi-row { cursor: default; }
 .pin.food { background: #b14a22; }
 .pin.sight { background: #2a5f9e; }
 .pin.cafe { background: #7a4a2e; }
+.pin.shop { background: #7a3f8f; }
+.pin.photo { background: #a8325e; }
 .pin.hotel { background: var(--cat-hotel); width: 40px; height: 40px; }
 .me-dot { width: 20px; height: 20px; border-radius: 50%; background: #2c64c7; border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(44,100,199,.25), 0 2px 6px rgba(0,0,0,.3); }
 .leaflet-popup-content { font-family: inherit; font-size: calc(16px * var(--fs)); margin: 12px 14px; color: #16203a; }
@@ -647,6 +658,8 @@ div.pi-row { cursor: default; }
 html.big { --fs: 1.25; --tabbar-h: 76px; }
 html.big .tabbar .ti { width: 30px; height: 30px; }
 html.big .seg em { display: none; }
+html.big .segbar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+html.big .seg { min-height: 52px; }
 html.big .hero .now { grid-template-columns: 1fr; }
 html.big .go-bar { grid-template-columns: 1fr 1fr 1fr; }
 html.big .go-bar .btn { padding: 8px 6px; }

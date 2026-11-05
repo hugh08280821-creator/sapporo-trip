@@ -5,7 +5,7 @@
   const $ = (s, el = document) => el.querySelector(s);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   // 카페·디저트는 맛집과 따로 「둘러보기 › 카페」에서 보여주기
-  PLACES.forEach((p) => { if (CATS[p.cat] && CATS[p.cat].type === 'cafe') p.type = 'cafe'; });
+  PLACES.forEach((p) => { if (CATS[p.cat]) p.type = CATS[p.cat].type; });
   const byId = Object.fromEntries([HOTEL, ...PLACES].map((p) => [p.id, p]));
 
   const store = {
@@ -20,6 +20,8 @@
     foodCat: 'all',
     cafeCat: 'all',
     sightCat: 'all',
+    shopCat: 'all',
+    photoCat: 'all',
     sortNear: false,
     mapFilter: 'all',
     day: null,
@@ -209,6 +211,10 @@
 
   /* ---------------- 공통 조각 ---------------- */
   const catOf = (p) => CATS[p.cat] || { label: '', emoji: '📍' };
+  // 둘러보기 종류: [종류, 아이콘, 이름]
+  const TYPE_SEGS = [['food', '🍣', '맛집'], ['cafe', '☕', '카페'], ['sight', '⛩', '명소'], ['shop', '🛍️', '쇼핑'], ['photo', '📸', '포토스팟']];
+  const TYPE_LABEL = Object.fromEntries(TYPE_SEGS.map(([t, , l]) => [t, l]));
+  const TYPE_CHIPS = TYPE_SEGS.map(([t, e, l]) => [t, `${e} ${l}`]);
 
   // 타베로그 평점은 소수 둘째 자리까지 같은 모양으로
   const fmtRating = (r) => Number(r).toFixed(2);
@@ -221,7 +227,7 @@
         <div class="ja">${esc(p.name_ja)} · ${esc(p.area)}</div>
         <p>${esc(p.desc)}</p>
         <span class="tl-meta">
-          <span class="tag">${esc(catOf(p).label)}</span>
+          <span class="tag">${p.type === 'photo' ? (p.night ? '🌙 밤에 예뻐요' : '☀️ 낮에 예뻐요') : esc(catOf(p).label)}</span>
           ${p.price ? `<span class="tag">${esc(p.price)}</span>` : ''}
           ${p.rating ? `<span class="tag">타베로그 ${fmtRating(p.rating)}</span>` : ''}
           ${p.route ? `<span class="tag">호텔에서 ${esc(p.route.min)}분</span>` : ''}
@@ -372,7 +378,7 @@
     const got = decodePlan(str || '');
     if (!got) { toast('일정 링크를 읽지 못했어요'); location.hash = '#/plan'; return; }
     const { days } = got;
-    const shopLine = got.shop && got.shop.length ? `<li><b>🛍 쇼핑 리스트</b> ${got.shop.length}개 (산 것 ${got.shop.filter((x) => x.done).length}개)</li>` : '';
+    const shopLine = got.shop && got.shop.length ? `<li><b>🛍️ 쇼핑 리스트</b> ${got.shop.length}개 (산 것 ${got.shop.filter((x) => x.done).length}개)</li>` : '';
     const msgLine = got.surprise ? `<li><b>💌 깜짝 메시지</b> 1통 (${esc(fmtOpenAt(got.surprise.openAt))}에 열려요)</li>` : '';
     const summary = msgLine + shopLine + days.map((d, i) => {
       const names = d.filter((x) => x.place).map((x) => byId[x.place].name_ko);
@@ -542,9 +548,7 @@
     const q = (state.pickQ || '').trim().toLowerCase();
     const f = state.pickF || 'all';
     let list = PLACES.filter((p) => p.cat !== 'transport');
-    if (f === 'food') list = list.filter((p) => p.type === 'food');
-    else if (f === 'cafe') list = list.filter((p) => p.type === 'cafe');
-    else if (f === 'sight') list = list.filter((p) => p.type === 'sight');
+    if (TYPE_LABEL[f]) list = list.filter((p) => p.type === f);
     else if (f === 'otaru') list = list.filter((p) => p.area === '오타루');
     if (q) list = list.filter((p) => `${p.name_ko} ${p.name_ja} ${p.area} ${catOf(p).label} ${p.menu || ''}`.toLowerCase().includes(q));
     if (state.pos && inHokkaido(state.pos) && f === 'near') list = [...list].sort((a, b) => haversine(state.pos, a) - haversine(state.pos, b));
@@ -561,7 +565,7 @@
   }
   function openPicker() {
     const dayIdx = state.day ?? 0;
-    const chips = [['all', '전체'], ['food', '🍣 맛집'], ['cafe', '🍰 카페'], ['sight', '⛩ 명소'], ['otaru', '🚃 오타루'], ['near', '📍 가까운 순']]
+    const chips = [['all', '전체'], ...TYPE_CHIPS, ['otaru', '🚃 오타루'], ['near', '📍 가까운 순']]
       .map(([k, l]) => `<button class="chip" data-pickf="${k}" aria-pressed="${(state.pickF || 'all') === k}">${l}</button>`).join('');
     openSheet(`<div class="d-head"><h2 id="sheet-title">어디에 가실래요?</h2><p class="d-sub">📅 ${esc(DAYS[dayIdx].label)} · ${esc(DAYS[dayIdx].dateLabel)}에 넣어요</p></div>
       <input type="search" class="search" placeholder="이름·메뉴로 찾기 (예: 라멘, 게, 오타루)" value="${esc(state.pickQ || '')}" data-pickq>
@@ -584,10 +588,13 @@
   /* ---------------- 목록 ---------------- */
   function renderList(type) {
     const key = `${type}Cat`;
-    const cats = Object.entries(CATS).filter(([, c]) => c.type === type);
+    // 포토스팟은 종류가 하나라 낮·밤으로 나눠 보기
+    const cats = type === 'photo' ? [['day', { emoji: '☀️', label: '낮에 예쁜 곳' }], ['night', { emoji: '🌙', label: '밤에 예쁜 곳' }]]
+      : Object.entries(CATS).filter(([, c]) => c.type === type);
     let list = PLACES.filter((p) => p.type === type);
     const sel = state[key];
     if (sel === 'otaru') list = list.filter((p) => p.area === '오타루');
+    else if (type === 'photo' && (sel === 'day' || sel === 'night')) list = list.filter((p) => !!p.night === (sel === 'night'));
     else if (sel !== 'all') list = list.filter((p) => p.cat === sel);
     const canSort = state.pos && inHokkaido(state.pos);
     if (state.sortNear && canSort) list = [...list].sort((a, b) => haversine(state.pos, a) - haversine(state.pos, b));
@@ -595,13 +602,13 @@
     const chips = [['all', '전체'], ...cats.map(([k, c]) => [k, `${c.emoji} ${c.label}`]), ['otaru', '🚃 오타루']]
       .map(([k, l]) => `<button class="chip" aria-pressed="${sel === k}" data-cat="${k}" data-key="${key}">${esc(l)}</button>`).join('');
 
-    const segs = [['food', '🍣', '맛집'], ['cafe', '☕', '카페'], ['sight', '⛩', '명소']]
+    const segs = TYPE_SEGS
       .map(([t, e, l]) => `<a class="seg" href="#/places/${t}" aria-current="${t === type ? 'page' : 'false'}"><span aria-hidden="true">${e}</span>${l}<em>${PLACES.filter((p) => p.type === t).length}</em></a>`).join('');
 
     view.innerHTML = `<nav class="segbar" aria-label="종류">${segs}</nav>
       <div id="near-slot">${nearBannerHTML()}</div>
       <div class="filters">${chips}</div>
-      <div class="sortbar"><h2 class="sortbar-title">${{ food: '맛집', cafe: '카페', sight: '명소' }[type]} ${list.length}곳</h2>
+      <div class="sortbar"><h2 class="sortbar-title">${TYPE_LABEL[type]} ${list.length}곳</h2>
         <button data-sort>${state.sortNear && canSort ? '추천순으로' : '📍 가까운 순'}</button></div>
       <div class="plist">${list.map(placeCard).join('')}</div>`;
   }
@@ -899,7 +906,7 @@
     const checks = store.get('checks', {});
     const packed = INFO.packing.filter((_, i) => checks[i]).length;
     const bought = shop.filter((x) => x.done).length;
-    const jumps = [['near', '🏪 근처'], ['menu', '🍣 메뉴판'], ['fx', '💴 환율'], ['weather', '🌤 날씨'], ['shop', '🛍 쇼핑'], ['notes', '🔒 내 메모'], ['hotel', '🏨 호텔'], ['reserve', '📞 예약'], ['airport', '✈️ 공항'], ['phrase', '🗣 일본어'], ['sos', '🚨 긴급']]
+    const jumps = [['near', '🏪 근처'], ['menu', '🍣 메뉴판'], ['fx', '💴 환율'], ['weather', '🌤 날씨'], ['shop', '🛍️ 쇼핑'], ['notes', '🔒 내 메모'], ['hotel', '🏨 호텔'], ['reserve', '📞 예약'], ['airport', '✈️ 공항'], ['phrase', '🗣 일본어'], ['sos', '🚨 긴급']]
       .map(([k, l]) => `<button class="chip" data-jump="${k}">${l}</button>`).join('');
     const allOpen = ['near', 'menu', 'fx', 'shop', 'notes', 'hotel', 'reserve', 'airport', 'airport-back', 'weather', 'tips', 'phrase', 'sos'].every(infoOpen);
     const noteCount = Object.keys(notes).filter((k) => noteVal(k)).length;
@@ -913,7 +920,7 @@
       ${sec('near', '🏪 근처 찾기', nearbyHTML(), '편의점·화장실·ATM')}
       ${sec('fx', '💴 환율 계산기', fxHTML())}
       ${sec('menu', '🍣 메뉴판 도우미', menuHTML(), '사진 번역·단어장')}
-      ${sec('shop', '🛍 쇼핑 리스트', shopHTML(), shop.length ? `${bought}/${shop.length}` : '')}
+      ${sec('shop', '🛍️ 쇼핑 리스트', shopHTML(), shop.length ? `${bought}/${shop.length}` : '')}
       ${sec('notes', '🔒 내 여행 메모', notesHTML(), noteCount ? `${noteCount}개 적음` : '항공편·투어')}
       ${sec('hotel', '🏨 호텔', `
       <div class="card stack">
@@ -1005,12 +1012,15 @@
       <div class="stack">
         ${liveBoxHTML(p)}
         ${p.desc ? `<p class="d-desc">${esc(p.desc)}</p>` : ''}
-        ${p.tip ? `<div class="tip">💡 ${p.tip}</div>` : ''}
+        ${p.tip ? `<div class="tip">${p.type === 'photo' ? '📸 <b>이렇게 찍어 보세요</b> ' : '💡 '}${p.tip}</div>` : ''}
+        ${p.caution ? `<div class="tip caution">⚠ ${esc(p.caution)}</div>` : ''}
+        ${p.near && byId[p.near] ? `<button class="btn small" data-open="${esc(p.near)}">${catOf(byId[p.near]).emoji} ${esc(byId[p.near].name_ko)} 정보 보기</button>` : ''}
         <dl class="facts card">
-          ${p.menu ? `<dt>추천 메뉴</dt><dd>${esc(p.menu)}</dd>` : ''}
+          ${p.best ? `<dt>잘 나오는 때</dt><dd>${esc(p.best)}</dd>` : ''}
+          ${p.menu ? `<dt>${p.type === 'shop' ? '살 만한 것' : '추천 메뉴'}</dt><dd>${esc(p.menu)}</dd>` : ''}
           ${p.price ? `<dt>예산</dt><dd>${esc(p.price)}</dd>` : ''}
           ${p.fee ? `<dt>요금</dt><dd>${esc(p.fee)}</dd>` : ''}
-          ${p.hours ? `<dt>영업시간</dt><dd>${esc(p.hours)}</dd>` : ''}
+          ${p.hours ? `<dt>${p.type === 'photo' ? '이용 시간' : '영업시간'}</dt><dd>${esc(p.hours)}</dd>` : ''}
           ${p.closed ? `<dt>휴무</dt><dd>${esc(p.closed)}</dd>` : ''}
         </dl>
         ${r ? `<details class="fold">
@@ -1146,7 +1156,7 @@
         <a class="btn small" href="${gmapsDir(p, 'transit')}" target="_blank" rel="noopener">길찾기</a></div>`);
       markers[p.id] = { m, p };
     }
-    $('#map-chips').innerHTML = [['all', '전체'], ['plan', '📅 내 일정'], ['food', '🍣 맛집'], ['cafe', '☕ 카페'], ['sight', '⛩ 명소'], ['otaru', '🚃 오타루']]
+    $('#map-chips').innerHTML = [['all', '전체'], ['plan', '📅 내 일정'], ...TYPE_CHIPS, ['otaru', '🚃 오타루']]
       .map(([k, l]) => `<button class="chip" data-mapf="${k}" aria-pressed="${state.mapFilter === k}">${l}</button>`).join('');
     applyMapFilter();
     updateMeMarker();
@@ -1195,7 +1205,7 @@
   const view = $('#view');
   const titles = { plan: '삿포로 2박 3일', map: '지도', places: '둘러보기', diary: '여행 앨범', info: '여행 정보' };
   // 예전 주소(#/food 등)도 둘러보기 탭으로 열기
-  const PLACE_TYPES = { food: 'food', cafe: 'cafe', sights: 'sight', sight: 'sight' };
+  const PLACE_TYPES = { food: 'food', cafe: 'cafe', sights: 'sight', sight: 'sight', shop: 'shop', photo: 'photo' };
   function route() {
     const raw = location.hash.replace(/^#\/?/, '') || 'plan';
     const [path, query] = raw.split('?');

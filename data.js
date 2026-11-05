@@ -43,10 +43,19 @@ const CATS = {
   view: { label: '야경·전망', emoji: '🌃', type: 'sight' },
   history: { label: '역사·건축', emoji: '🏛', type: 'sight' },
   walk: { label: '산책·거리', emoji: '🚶', type: 'sight' },
-  market: { label: '시장·쇼핑', emoji: '🛍', type: 'sight' },
+  market: { label: '시장', emoji: '🐟', type: 'sight' },
   museum: { label: '체험·박물관', emoji: '🎁', type: 'sight' },
   nature: { label: '자연·온천·공원', emoji: '♨️', type: 'sight' },
   transport: { label: '교통', emoji: '✈️', type: 'sight' },
+  // 쇼핑: 어디가 가까운지 지도에서 바로 보이게
+  discount: { label: '돈키호테·할인점', emoji: '🏷️', type: 'shop' },
+  dept: { label: '백화점·쇼핑가', emoji: '🛍️', type: 'shop' },
+  drug: { label: '드러그스토어', emoji: '💊', type: 'shop' },
+  souvenir: { label: '홋카이도 기념품', emoji: '🎀', type: 'shop' },
+  variety: { label: '생활잡화·100엔숍', emoji: '🧺', type: 'shop' },
+  electronics: { label: '가전·카메라', emoji: '🔌', type: 'shop' },
+  // 포토스팟: 서서 찍는 위치 기준
+  photo: { label: '포토스팟', emoji: '📸', type: 'photo' },
 };
 
 /* 자주 쓰는 경로 조각 */
@@ -391,7 +400,7 @@ const PLACES = [
     tip: '호텔에서 가장 가까운 야경 명소예요. 60세 이상 할인이 있을 수 있으니 여권을 챙기세요.',
   },
   {
-    id: 'tanukikoji', type: 'sight', cat: 'market', area: '오도리~스스키노',
+    id: 'tanukikoji', type: 'shop', cat: 'dept', area: '오도리~스스키노',
     name_ko: '다누키코지 상점가', name_ja: '狸小路商店街',
     desc: '약 900m 길이의 지붕 덮인 아케이드로, 눈이 와도 기념품·드러그스토어·맛집을 편하게 둘러볼 수 있어요.',
     hours: '점포마다 다름 (대개 10:00~21:00)', closed: '연중무휴',
@@ -406,9 +415,9 @@ const PLACES = [
     desc: '스스키노 교차로의 거대한 네온 간판으로, 삿포로의 밤을 상징하는 포토 스폿이에요.',
     hours: '일몰 후 점등', closed: '없음',
     fee: '무료', stay: '15분',
-    address: '北海道札幌市中央区南4条西3丁目', lat: 43.05565, lng: 141.35375,
+    address: '北海道札幌市中央区南4条西3丁目', lat: 43.05527, lng: 141.35369,
     route: { min: 10, fare: '210엔', taxi: '약 1,000엔', steps: [R.toSapporoSt, R.toSusukino, '교차로 쪽 출구로 나오면 바로 앞'] },
-    tip: '교차로 남서쪽 모퉁이에서 찍으면 간판과 교차로가 함께 담겨요.',
+    tip: '간판은 교차로 남동쪽 건물에 있어요. 대각선 건너편인 북서쪽 모퉁이에서 찍으면 간판과 교차로가 함께 담겨요.',
   },
   {
     id: 'nijo', type: 'sight', cat: 'market', area: '니조시장',
